@@ -71,6 +71,21 @@
           "type": "number",
           "default": 3,
           "description": "Nested object parsing depth"
+        },
+        "metersphere.workspaceId": {
+          "type": "string",
+          "default": "",
+          "description": "Selected workspace ID"
+        },
+        "metersphere.projectId": {
+          "type": "string",
+          "default": "",
+          "description": "Selected project ID"
+        },
+        "metersphere.moduleId": {
+          "type": "string",
+          "default": "",
+          "description": "Selected module ID"
         }
       }
     },
