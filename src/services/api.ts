@@ -41,7 +41,10 @@ export class MsApiClient {
   }
   
   async getUserInfo(): Promise<any> {
-    const response = await this.client.get('/user/key/validate');
+//    const response = await this.client.get('/user/api/key/validate');
+
+// for v2
+    const response = await this.client.get('/currentUser'); 
     return response.data;
   }
   
