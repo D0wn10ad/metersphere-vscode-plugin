@@ -21,7 +21,7 @@ export class ConfigService {
       url: config.get<string>('url', 'http://localhost:8080'),
       accessKey: config.get<string>('accessKey', ''),
       secretKey: config.get<string>('secretKey', ''),
-      contextPath: config.get<string>('contextPath', '/api'),
+      contextPath: config.get<string>('contextPath', ''),
       exportMode: config.get<'fullCoverage' | 'incrementalMerge'>('exportMode', 'incrementalMerge'),
       useJavadoc: config.get<boolean>('useJavadoc', true),
       nestingDepth: config.get<number>('nestingDepth', 3)
