@@ -1,4 +1,5 @@
-out/
+## allow CI packaging: keep entrypoint visible
+extension/out/extension.js
 node_modules/
 .vscode/**
 .gitignore

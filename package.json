@@ -1,9 +1,4 @@
 {
-  "name": "metersphere-vscode",
-  "displayName": "MeterSphere",
-  "description": "VSCode extension for MeterSphere API testing platform",
-  "version": "1.0.0",
-  "publisher": "metersphere",
   "main": "./out/extension.js",
   "name": "metersphere-vscode",
   "displayName": "MeterSphere",
@@ -11,7 +6,7 @@
   "version": "1.0.0",
   "publisher": "metersphere",
   "engines": {
-    "vscode": "^1.74.0"
+    "vscode": "^1.90.0"
   },
   "categories": [
     "Other",
@@ -55,7 +50,7 @@
         },
         "metersphere.contextPath": {
           "type": "string",
-          "default": "/api",
+          "default": "",
           "description": "API context path"
         },
         "metersphere.exportMode": {
@@ -76,6 +71,21 @@
           "type": "number",
           "default": 3,
           "description": "Nested object parsing depth"
+        },
+        "metersphere.workspaceId": {
+          "type": "string",
+          "default": "",
+          "description": "Selected workspace ID"
+        },
+        "metersphere.projectId": {
+          "type": "string",
+          "default": "",
+          "description": "Selected project ID"
+        },
+        "metersphere.moduleId": {
+          "type": "string",
+          "default": "",
+          "description": "Selected module ID"
         }
       }
     },
@@ -92,18 +102,22 @@
   "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "test": "node ./out/test/runTest.js"
+    "test": "node ./out/test/runTest.js",
+    "package": "npx @vscode/vsce package",
+    "verify-bundle": "node ./scripts/verify-bundle.js",
+    "test:unit": "mocha --ui tdd 'metersphere-vscode-plugin/test/**/*.unit.ts' -r ts-node/register --reporter spec"
   },
   "devDependencies": {
-    "@types/node": "^18.0.0",
+    "@types/node": "^22.0.0",
     "@types/vscode": "^1.74.0",
     "@vscode/test-electron": "^2.3.0",
     "typescript": "^5.0.0",
-    "vsce": "^2.15.0"
+    "@vscode/vsce": "^1.0.0",
+    "ts-node": "^10.9.1"
   },
   "dependencies": {
-    "axios": "^1.6.0",
-    "java-parser": "^1.4.0",
-    "uuid": "^9.0.0"
+    "https-proxy-agent": "^4.0.0",
+    "adm-zip": "^0.5.9",
+    "java-parser": "^1.4.0"
   }
 }

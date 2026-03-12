@@ -41,8 +41,9 @@ export class Exporter {
       url.query = queryParams.map(p => ({ key: p.name, value: '' }));
     }
     
+    const httpMethod = endpoint.method ?? 'GET';
     const request: PostmanRequest = {
-      method: endpoint.method,
+      method: httpMethod,
       url,
       header: [
         { key: 'Content-Type', value: 'application/json' }
