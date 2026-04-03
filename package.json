@@ -1,0 +1,30 @@
+{
+  "name": "metersphere-vscode-extension",
+  "displayName": "MeterSphere VSCode",
+  "description": "VSCode extension to interact with MeterSphere v2 APIs (Phase 1 MVP + Phase 2 Navigator)",
+  "version": "0.1.0",
+  "publisher": "metersphere",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": ["onCommand:metersphere.openDebugger"],
+  "main": "out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "metersphere.openDebugger",
+        "title": "MeterSphere: Open Debugger"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p tsconfig.json",
+    "watch": "tsc -watch -p tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "^4.9.5",
+    "@types/node": "^20.11.7",
+    "ts-node": "^10.9.1"
+  }
+}
