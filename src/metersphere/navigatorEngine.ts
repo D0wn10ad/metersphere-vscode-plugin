@@ -9,7 +9,14 @@ interface MsWorkspace {
 interface MsProject {
   id: string
   name: string
-  workspaceId: string
+  workspaceId?: string
+}
+
+interface MsModule {
+  id: string
+  name: string
+  parentId?: string
+  projectId?: string
 }
 
 export class NavigatorEngine {
@@ -27,7 +34,7 @@ export class NavigatorEngine {
     }
     try {
       const baseUrl = NavigatorEngine.getBaseUrl()
-      const resp = await fetchFn('GET', `${baseUrl}/workspace/list`, {})
+      const resp = await fetchFn('GET', `${baseUrl}/workspace/list/userworkspace`, {})
       const data = (resp.body as { data: MsWorkspace[] }).data ?? []
       const nodes = data.map(ws => new NavigatorNode({
         id: ws.id,
@@ -40,6 +47,37 @@ export class NavigatorEngine {
       console.warn('NavigatorEngine: failed to discover workspaces:', error)
       return []
     }
+  }
+
+  static async discoverProjects(
+    workspaceId: string,
+    fetchFn: (method: string, url: string, headers: Record<string, string>, body?: unknown) => Promise<HttpResponse>
+  ): Promise<NavigatorNode[]> {
+    const baseUrl = NavigatorEngine.getBaseUrl()
+    const body = { workspaceIds: [workspaceId] }
+    const resp = await fetchFn('POST', `${baseUrl}/project/list/related`, {}, body)
+    const data = (resp.body as { data: MsProject[] }).data ?? []
+    return data.map(proj => new NavigatorNode({
+      id: proj.id,
+      name: proj.name,
+      type: NodeType.PROJECT,
+      parentId: proj.workspaceId ?? workspaceId,
+    }))
+  }
+
+  static async discoverModules(
+    projectId: string,
+    fetchFn: (method: string, url: string, headers: Record<string, string>, body?: unknown) => Promise<HttpResponse>
+  ): Promise<NavigatorNode[]> {
+    const baseUrl = NavigatorEngine.getBaseUrl()
+    const resp = await fetchFn('GET', `${baseUrl}/api/module/list/${projectId}/HTTP`, {})
+    const data = (resp.body as { data: MsModule[] }).data ?? []
+    return data.map(mod => new NavigatorNode({
+      id: mod.id,
+      name: mod.name,
+      type: NodeType.MODULE,
+      parentId: mod.parentId,
+    }))
   }
 
   static buildTree(projects: MsProject[]): NavigatorNode[] {
