@@ -4,6 +4,7 @@ import { NavigatorTreeDataProvider } from './navigatorTreeProvider'
 import { NavigatorEngine } from './navigatorEngine'
 import { CommandRouter } from './commandRouter'
 import { httpRequest } from './httpClient'
+import { SettingsManager } from './settingsManager'
 
 export function activate(context: vscode.ExtensionContext): void {
   const wvc = new WebViewController(context)
@@ -28,9 +29,12 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(treeView)
 
-  NavigatorEngine.discoverWorkspaces(httpRequest).then(roots => {
-    navigatorProvider.setRoots(roots)
-  })
+  if (SettingsManager.isConfigured()) {
+    NavigatorEngine.clearCache()
+    NavigatorEngine.discoverWorkspaces(httpRequest).then(roots => {
+      navigatorProvider.setRoots(roots)
+    })
+  }
 }
 
 export function deactivate() {}
