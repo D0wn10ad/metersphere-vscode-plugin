@@ -55,7 +55,9 @@ declare module 'vscode' {
   }
 
   export namespace commands {
-    function registerCommand(command: string, callback: (...args: unknown[]) => unknown): Disposable
+    // eslint-disable-next-line @typescript-eslint/ban-types
+    function registerCommand(command: string, callback: Function): Disposable
+    function executeCommand(command: string, ...args: unknown[]): Thenable<unknown>
   }
 
   export interface Disposable {
@@ -79,4 +81,40 @@ declare module 'vscode' {
   export const workspace: typeof workspace
   export const window: typeof window
   export const commands: typeof commands
+
+  export type TreeItemCollapsibleState = 0 | 1 | 2
+
+  export interface TreeItem {
+    id?: string
+    label?: string
+    collapsibleState?: TreeItemCollapsibleState
+    tooltip?: string
+    command?: unknown
+    iconPath?: unknown
+    contextValue?: string
+    children?: TreeItem[]
+  }
+
+  export interface TreeDataProvider<T> {
+    getTreeItem(element: T): TreeItem | Thenable<TreeItem>
+    getChildren(element?: T): T[] | Thenable<T[]> | null | Thenable<null>
+    onDidChangeTreeData?: Event<T | undefined | null>
+  }
+
+  export function createTreeView<T>(viewId: string, options: { treeDataProvider: TreeDataProvider<T> }): TreeView<T>
+
+  export interface TreeView<T> extends Disposable {
+    readonly treeDataProvider: TreeDataProvider<T>
+    readonly selection: T[]
+    dispose(): void
+  }
+
+  export class EventEmitter<T> {
+    constructor()
+    event: Event<T>
+    fire(data?: T): void
+    dispose(): void
+  }
+
+  export type Event<T> = (listener: (e: T) => void) => Disposable
 }
