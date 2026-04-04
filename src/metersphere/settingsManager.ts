@@ -68,18 +68,17 @@ export class SettingsManager {
     vscode.workspace.getConfiguration().update(SettingsManager.MS_URL_KEY, url, vscode.ConfigurationTarget.Global)
   }
 
-  static generateSignature(): string {
-    const accessKey = SettingsManager.getAccessKey()
-    const secretKey = SettingsManager.getSecretKey()
-    if (!accessKey || !secretKey) {
+  static generateSignature(accessKey?: string, secretKey?: string): string {
+    const ak = accessKey ?? SettingsManager.getAccessKey()
+    const sk = secretKey ?? SettingsManager.getSecretKey()
+    if (!ak || !sk) {
       return ''
     }
     const uuid = crypto.randomUUID()
     const timestamp = Date.now()
-    const plaintext = `${accessKey}|${uuid}|${timestamp}`
-    const key = Buffer.from(secretKey, 'utf8')
-    const iv = Buffer.from(accessKey, 'utf8')
-    // AES-256-CBC PKCS5 padding
+    const plaintext = `${ak}|${uuid}|${timestamp}`
+    const key = Buffer.from(sk, 'utf8')
+    const iv = Buffer.from(ak, 'utf8')
     const cipher = crypto.createCipheriv('aes-256-cbc', key, iv)
     let sig = cipher.update(plaintext, 'utf8', 'base64')
     sig += cipher.final('base64')
