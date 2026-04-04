@@ -43,6 +43,16 @@ jest.mock('vscode', () => ({
       selection: [],
       dispose: () => {},
     }),
+    createStatusBarItem: (alignment, priority) => ({
+      text: '',
+      tooltip: undefined,
+      color: undefined,
+      command: undefined,
+      show: () => {},
+      hide: () => {},
+      dispose: () => {},
+    }),
+    showQuickPick: (items, options) => Promise.resolve(items[0]),
   },
   commands: {
     registerCommand: () => ({ dispose: () => {} }),
