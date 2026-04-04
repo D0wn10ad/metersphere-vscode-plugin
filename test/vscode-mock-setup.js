@@ -53,6 +53,9 @@ jest.mock('vscode', () => ({
       dispose: () => {},
     }),
     showQuickPick: (items, options) => Promise.resolve(items[0]),
+    showInputBox: (options) => Promise.resolve(''),
+    showInformationMessage: (message) => Promise.resolve(),
+    showErrorMessage: (message) => Promise.resolve(),
   },
   commands: {
     registerCommand: () => ({ dispose: () => {} }),

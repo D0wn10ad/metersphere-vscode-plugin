@@ -94,6 +94,13 @@ describe('ConnectionManager', () => {
   })
 
   describe('testConnection()', () => {
+    beforeEach(() => {
+      jest.useFakeTimers()
+    })
+    afterEach(() => {
+      jest.useRealTimers()
+    })
+
     it('returns success when /currentUser returns 200', async () => {
       const { httpRequest } = require('../src/metersphere/httpClient')
       ;(httpRequest as jest.Mock).mockResolvedValueOnce({ status: 200, body: {} })
@@ -141,6 +148,25 @@ describe('ConnectionManager', () => {
       const result = await cm.testConnection('http://custom.example.com', 'custom-ak', 'custom-sk')
       expect(result.success).toBe(true)
       expect(result.url).toBe('http://custom.example.com')
+    })
+
+    it('passes caller-provided credentials to httpRequest (not empty ones)', async () => {
+      const { httpRequest } = require('../src/metersphere/httpClient')
+      ;(httpRequest as jest.Mock).mockResolvedValueOnce({ status: 200, body: {} })
+      const { SettingsManager } = require('../src/metersphere/settingsManager')
+      ;(SettingsManager.getMsUrl as jest.Mock).mockReturnValueOnce('http://ms.example.com')
+      ;(SettingsManager.getAccessKey as jest.Mock).mockReturnValueOnce('old-ak')
+      ;(SettingsManager.getSecretKey as jest.Mock).mockReturnValueOnce('old-sk')
+
+      await cm.testConnection('http://custom.example.com', 'new-ak', 'new-sk')
+
+      const call = (httpRequest as jest.Mock).mock.calls[0]
+      expect(call[0]).toBe('GET')
+      expect(call[1]).toBe('http://custom.example.com/currentUser')
+      expect(call[2]).toMatchObject({
+        accessKey: 'new-ak',
+        signature: 'mock-signature',
+      })
     })
   })
 })

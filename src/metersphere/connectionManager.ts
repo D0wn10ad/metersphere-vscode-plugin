@@ -66,16 +66,30 @@ export class ConnectionManager {
       signature: signature,
     }
 
-    try {
-      const resp = await httpRequest('GET', `${msUrl}/currentUser`, headers)
-      if (resp.status === 200) {
-        this.currentUrl = msUrl
-        this.update(ConnectionState.Connected, msUrl)
-        return { success: true, url: msUrl }
-      } else {
+    const doTest = async () => {
+      try {
+        const resp = await httpRequest('GET', `${msUrl}/currentUser`, headers)
+        if (resp.status === 200) {
+          this.currentUrl = msUrl
+          this.update(ConnectionState.Connected, msUrl)
+          return { success: true, url: msUrl }
+        } else {
+          this.update(ConnectionState.Disconnected)
+          return { success: false, error: `HTTP ${resp.status}` }
+        }
+      } catch (error) {
         this.update(ConnectionState.Disconnected)
-        return { success: false, error: `HTTP ${resp.status}` }
+        return { success: false, error: String(error) }
       }
+    }
+
+    const timeoutMs = 15_000
+    const timeout = new Promise<{ success: boolean; url?: string; error: string }>((_, reject) =>
+      setTimeout(() => reject(new Error(`Connection timed out after ${timeoutMs / 1000}s`)), timeoutMs)
+    )
+
+    try {
+      return await Promise.race([doTest(), timeout])
     } catch (error) {
       this.update(ConnectionState.Disconnected)
       return { success: false, error: String(error) }

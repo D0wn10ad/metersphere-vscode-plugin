@@ -5,15 +5,6 @@ declare module 'vscode' {
     WorkspaceFolder: number
   }
 
-  export namespace workspace {
-    const rootPath: string | undefined
-    function getConfiguration(): Configuration &
-      Readonly<{
-        get<T>(key: string): T | undefined
-        update(key: string, value: unknown, target?: number): Promise<void>
-      }>
-  }
-
   export interface Configuration {
     get<T>(key: string): T | undefined
     update(key: string, value: unknown, target?: number): Promise<void>
@@ -27,31 +18,23 @@ declare module 'vscode' {
     value?: string
   }
 
-  export namespace window {
-    function createWebviewPanel(
-      id: string,
-      title: string,
-      viewColumn: ViewColumn,
-      options?: { enableScripts?: boolean }
-    ): WebviewPanel
-    function createTreeView<T>(viewId: string, options: { treeDataProvider: TreeDataProvider<T> }): TreeView<T>
-    function showInputBox(options?: InputBoxOptions): Promise<string | undefined>
-    function showInformationMessage(message: string): Promise<void>
-    function showErrorMessage(message: string): Promise<void>
-    function createStatusBarItem(alignment?: StatusBarAlignment, priority?: number): StatusBarItem
-    function showQuickPick<T>(
-      items: T[] | Thenable<T[]>,
-      options?: { placeHolder?: string; title?: string }
-    ): Thenable<T | undefined>
+  export interface StatusBarItem extends Disposable {
+    text: string
+    tooltip?: string
+    color?: string
+    command?: string
+    show(): void
+    hide(): void
   }
 
-  export class WebviewPanel {
-    readonly viewType: string
-    readonly title: string
-    webview: Webview
-    onDidDispose: { (listener: () => void): Disposable }
-    dispose(): void
-    reveal(viewColumn: ViewColumn): void
+  export enum StatusBarAlignment {
+    Left = -1,
+    Right = 1,
+  }
+
+  export interface QuickPickOptions {
+    placeHolder?: string
+    title?: string
   }
 
   export interface WebviewMessage {
@@ -71,28 +54,8 @@ declare module 'vscode' {
     Three = 3
   }
 
-  export enum StatusBarAlignment {
-    Left = -1,
-    Right = 1,
-  }
-
-  export namespace commands {
-    // eslint-disable-next-line @typescript-eslint/ban-types
-    function registerCommand(command: string, callback: Function): Disposable
-    function executeCommand(command: string, ...args: unknown[]): Thenable<unknown>
-  }
-
   export interface Disposable {
     dispose(): void
-  }
-
-  export interface StatusBarItem extends Disposable {
-    text: string
-    tooltip?: string
-    color?: string
-    command?: string
-    show(): void
-    hide(): void
   }
 
   export interface ExtensionContext {
@@ -108,10 +71,6 @@ declare module 'vscode' {
     get<T>(key: string, defaultValue?: T): T | undefined
     update(key: string, value: unknown): Promise<void>
   }
-
-  export const workspace: typeof workspace
-  export const window: typeof window
-  export const commands: typeof commands
 
   export type TreeItemCollapsibleState = 0 | 1 | 2
 
@@ -132,8 +91,6 @@ declare module 'vscode' {
     onDidChangeTreeData?: Event<T | undefined | null>
   }
 
-  export function createTreeView<T>(viewId: string, options: { treeDataProvider: TreeDataProvider<T> }): TreeView<T>
-
   export interface TreeView<T> extends Disposable {
     readonly treeDataProvider: TreeDataProvider<T>
     readonly selection: T[]
@@ -148,4 +105,48 @@ declare module 'vscode' {
   }
 
   export type Event<T> = (listener: (e: T) => void) => Disposable
+
+  export type Thenable<T> = Promise<T>
+
+  export interface WebviewPanel {
+    readonly viewType: string
+    readonly title: string
+    webview: Webview
+    onDidDispose: { (listener: () => void): Disposable }
+    dispose(): void
+    reveal(viewColumn: ViewColumn): void
+  }
+
+  export interface Window {
+    createWebviewPanel(
+      id: string,
+      title: string,
+      viewColumn: ViewColumn,
+      options?: { enableScripts?: boolean }
+    ): WebviewPanel
+    createTreeView<T>(viewId: string, options: { treeDataProvider: TreeDataProvider<T> }): TreeView<T>
+    showInputBox(options?: InputBoxOptions): Promise<string | undefined>
+    showInformationMessage(message: string): Promise<void>
+    showErrorMessage(message: string): Promise<void>
+    createStatusBarItem(alignment?: StatusBarAlignment, priority?: number): StatusBarItem
+    showQuickPick<T>(
+      items: T[] | Thenable<T[]>,
+      options?: QuickPickOptions
+    ): Thenable<T | undefined>
+  }
+
+  export interface Workspace {
+    readonly rootPath: string | undefined
+    getConfiguration(): Configuration
+  }
+
+  export interface Commands {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    registerCommand(command: string, callback: (...args: any[]) => any): Disposable
+    executeCommand(command: string, ...args: unknown[]): Thenable<unknown>
+  }
+
+  export const workspace: Workspace
+  export const window: Window
+  export const commands: Commands
 }

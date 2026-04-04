@@ -1,0 +1,17 @@
+.vscodeignore
+.vscode-test.*
+src
+test
+.git
+docs
+node_modules/vscode
+*.ts
+*.map
+.github
+.worktrees
+tsconfig.json
+jest.config.js
+.eslintrc.js
+.prettierrc
+AGENTS.md
+*.test.ts

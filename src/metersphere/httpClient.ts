@@ -28,12 +28,6 @@ export async function httpRequest(
   _tokenOverride?: string
 ): Promise<HttpResponse> {
   const start = Date.now()
-  const accessKey = SettingsManager.getAccessKey()
-  const secretKey = SettingsManager.getSecretKey()
-  if (accessKey && secretKey) {
-    headers['accessKey'] = accessKey
-    headers['signature'] = SettingsManager.generateSignature()
-  }
   const fetchFn = getFetch()
   if (!fetchFn) {
     throw new Error('Fetch API is not available in this environment')

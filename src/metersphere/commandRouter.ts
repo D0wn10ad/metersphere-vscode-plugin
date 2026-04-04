@@ -91,10 +91,14 @@ export class CommandRouter {
         )
 
         if (!result.success) {
-          deps.connectionManager.update(ConnectionState.Unconfigured)
-          vscode.window.showErrorMessage(
-            'Connection failed: ' + (result.error ?? 'Unknown error')
-          )
+          deps.connectionManager.update(ConnectionState.Disconnected)
+          try {
+            vscode.window.showErrorMessage(
+              'Connection failed: ' + (result.error ?? 'Unknown error')
+            )
+          } catch {
+            // notification can throw if VSCode is shutting down
+          }
           return
         }
 

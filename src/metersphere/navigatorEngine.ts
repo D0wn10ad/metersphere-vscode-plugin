@@ -1,5 +1,6 @@
 import { NavigatorNode, NodeType } from './models/navigatorNode'
 import { HttpResponse } from './httpClient'
+import { SettingsManager } from './settingsManager'
 
 interface MsWorkspace {
   id: string
@@ -26,6 +27,16 @@ export class NavigatorEngine {
     NavigatorEngine.workspaceCache = null
   }
 
+  private static buildAuthHeaders(): Record<string, string> {
+    const ak = SettingsManager.getAccessKey()
+    const sk = SettingsManager.getSecretKey()
+    if (!ak || !sk) return {}
+    return {
+      accessKey: ak,
+      signature: SettingsManager.generateSignature(ak, sk),
+    }
+  }
+
   static async discoverWorkspaces(
     fetchFn: (method: string, url: string, headers: Record<string, string>, body?: unknown) => Promise<HttpResponse>
   ): Promise<NavigatorNode[]> {
@@ -34,7 +45,8 @@ export class NavigatorEngine {
     }
     try {
       const baseUrl = NavigatorEngine.getBaseUrl()
-      const resp = await fetchFn('GET', `${baseUrl}/workspace/list/userworkspace`, {})
+      const headers = NavigatorEngine.buildAuthHeaders()
+      const resp = await fetchFn('GET', `${baseUrl}/workspace/list/userworkspace`, headers)
       const data = (resp.body as { data: MsWorkspace[] }).data ?? []
       const nodes = data.map(ws => new NavigatorNode({
         id: ws.id,
@@ -55,7 +67,8 @@ export class NavigatorEngine {
   ): Promise<NavigatorNode[]> {
     const baseUrl = NavigatorEngine.getBaseUrl()
     const body = { workspaceIds: [workspaceId] }
-    const resp = await fetchFn('POST', `${baseUrl}/project/list/related`, {}, body)
+    const headers = NavigatorEngine.buildAuthHeaders()
+    const resp = await fetchFn('POST', `${baseUrl}/project/list/related`, headers, body)
     const data = (resp.body as { data: MsProject[] }).data ?? []
     return data.map(proj => new NavigatorNode({
       id: proj.id,
@@ -70,7 +83,8 @@ export class NavigatorEngine {
     fetchFn: (method: string, url: string, headers: Record<string, string>, body?: unknown) => Promise<HttpResponse>
   ): Promise<NavigatorNode[]> {
     const baseUrl = NavigatorEngine.getBaseUrl()
-    const resp = await fetchFn('GET', `${baseUrl}/api/module/list/${projectId}/HTTP`, {})
+    const headers = NavigatorEngine.buildAuthHeaders()
+    const resp = await fetchFn('GET', `${baseUrl}/api/module/list/${projectId}/HTTP`, headers)
     const data = (resp.body as { data: MsModule[] }).data ?? []
     return data.map(mod => new NavigatorNode({
       id: mod.id,
@@ -95,7 +109,6 @@ export class NavigatorEngine {
   }
 
   static getBaseUrl(): string {
-    const { SettingsManager } = require('./settingsManager')
     return SettingsManager.getMsUrl() ?? 'http://localhost:8080'
   }
 }
