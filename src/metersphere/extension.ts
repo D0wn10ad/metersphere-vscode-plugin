@@ -6,6 +6,7 @@ import { CommandRouter } from './commandRouter'
 import { httpRequest } from './httpClient'
 import { SettingsManager } from './settingsManager'
 import { NavigatorNode, NodeType } from './models/navigatorNode'
+import { ConnectionManager, ConnectionState } from './connectionManager'
 
 export function activate(context: vscode.ExtensionContext): void {
   const wvc = new WebViewController(context)
@@ -13,7 +14,10 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('metersphere.openDebugger', () => wvc.open())
   )
 
-  const navigatorProvider = new NavigatorTreeDataProvider()
+  // Connection manager — single source of truth for connection state
+  const connectionManager = new ConnectionManager(context)
+
+  const navigatorProvider = new NavigatorTreeDataProvider(connectionManager)
   navigatorProvider.setFetchFn(httpRequest)
 
   const treeView = vscode.window.createTreeView('metersphere.navigator.view', {
@@ -43,14 +47,20 @@ export function activate(context: vscode.ExtensionContext): void {
     navigatorProvider,
     httpRequest,
     getActiveWebviewPanel: getActivePanel,
+    connectionManager,
   })
 
   context.subscriptions.push(treeView)
 
+  // Test connection on activation if configured
   if (SettingsManager.isConfigured()) {
+    connectionManager.update(ConnectionState.Connecting)
     NavigatorEngine.clearCache()
     NavigatorEngine.discoverWorkspaces(httpRequest).then(roots => {
       navigatorProvider.setRoots(roots)
+      connectionManager.update(ConnectionState.Connected, SettingsManager.getMsUrl())
+    }).catch(() => {
+      connectionManager.update(ConnectionState.Disconnected)
     })
   }
 }

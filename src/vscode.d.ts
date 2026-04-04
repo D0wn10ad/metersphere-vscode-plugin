@@ -37,6 +37,7 @@ declare module 'vscode' {
     function createTreeView<T>(viewId: string, options: { treeDataProvider: TreeDataProvider<T> }): TreeView<T>
     function showInputBox(options?: InputBoxOptions): Promise<string | undefined>
     function showInformationMessage(message: string): Promise<void>
+    function showErrorMessage(message: string): Promise<void>
     function createStatusBarItem(alignment?: StatusBarAlignment, priority?: number): StatusBarItem
     function showQuickPick<T>(
       items: T[] | Thenable<T[]>,

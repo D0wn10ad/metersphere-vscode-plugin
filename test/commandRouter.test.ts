@@ -1,4 +1,5 @@
 import { CommandRouter } from '../src/metersphere/commandRouter'
+import { ConnectionManager } from '../src/metersphere/connectionManager'
 
 describe('CommandRouter', () => {
   test('registers all Phase 2 commands', () => {
@@ -7,12 +8,17 @@ describe('CommandRouter', () => {
       subscriptions: { push: (d: unknown) => disposables.push(d) }
     }
     const mockProvider = { setRoots: () => {} }
+    const mockConnectionManager = {
+      update: () => {},
+      testConnection: () => Promise.resolve({ success: true, url: 'http://localhost:8080' }),
+    } as unknown as ConnectionManager
     CommandRouter.registerAll(mockContext as any, {
       navigatorProvider: mockProvider as any,
       httpRequest: () => Promise.resolve({ status: 200, body: { data: [] } }),
       getActiveWebviewPanel: () => undefined,
+      connectionManager: mockConnectionManager,
     } as any)
-    expect(disposables.length).toBe(4)
+    expect(disposables.length).toBe(6)
   })
 
   test('prefillFromNode dispatches to webview', () => {

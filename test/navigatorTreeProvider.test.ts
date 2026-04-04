@@ -8,26 +8,26 @@ describe('NavigatorTreeDataProvider', () => {
     provider = new NavigatorTreeDataProvider()
   })
 
-  test('getChildren returns empty array when no roots set', () => {
-    const children = provider.getChildren(undefined) as NavigatorNode[]
+  test('getChildren returns empty array when no roots set', async () => {
+    const children = await provider.getChildren(undefined)
     expect(Array.isArray(children)).toBe(true)
     expect(children.length).toBe(0)
   })
 
-  test('getChildren returns root nodes after setRoots', () => {
+  test('getChildren returns root nodes after setRoots', async () => {
     const wsNode = new NavigatorNode({ id: 'ws-1', name: 'WS', type: NodeType.WORKSPACE })
     provider.setRoots([wsNode])
-    const children = provider.getChildren(undefined) as NavigatorNode[]
+    const children = await provider.getChildren(undefined)
     expect(children.length).toBe(1)
     expect(children[0].id).toBe('ws-1')
   })
 
-  test('getChildren returns children of a node', () => {
+  test('getChildren returns children of a node', async () => {
     const folder = new NavigatorNode({ id: 'folder-1', name: 'User APIs', type: NodeType.FOLDER })
     const apiNode = new NavigatorNode({ id: 'api-1', name: 'Get Users', type: NodeType.API })
     folder.addChild(apiNode)
     provider.setRoots([folder])
-    const children = provider.getChildren(folder) as NavigatorNode[]
+    const children = await provider.getChildren(folder)
     expect(children.length).toBe(1)
     expect(children[0].id).toBe('api-1')
   })
