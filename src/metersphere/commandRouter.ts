@@ -55,27 +55,41 @@ export class CommandRouter {
           return
         }
 
-        // Step 3: Prompt for API token
-        const token = await vscode.window.showInputBox({
-          title: 'MeterSphere API Token',
+        // Step 3: Prompt for Access Key
+        const accessKey = await vscode.window.showInputBox({
+          title: 'MeterSphere Access Key',
           password: true,
-          prompt: 'Enter your MeterSphere API token',
+          prompt: 'Enter your MeterSphere Access Key',
         })
 
         // Step 4: Check if cancelled
-        if (token === undefined) {
+        if (accessKey === undefined) {
           vscode.window.showInformationMessage('Configuration cancelled')
           return
         }
 
-        // Step 5: Save both values
-        SettingsManager.setMsUrl(url.trim())
-        SettingsManager.setToken(token.trim())
+        // Step 5: Prompt for Secret Key
+        const secretKey = await vscode.window.showInputBox({
+          title: 'MeterSphere Secret Key',
+          password: true,
+          prompt: 'Enter your MeterSphere Secret Key',
+        })
 
-        // Step 6: Show success message
+        // Step 6: Check if cancelled
+        if (secretKey === undefined) {
+          vscode.window.showInformationMessage('Configuration cancelled')
+          return
+        }
+
+        // Step 7: Save all values
+        SettingsManager.setMsUrl(url.trim())
+        SettingsManager.setAccessKey(accessKey.trim())
+        SettingsManager.setSecretKey(secretKey.trim())
+
+        // Step 8: Show success message
         vscode.window.showInformationMessage('MeterSphere configured successfully!')
 
-        // Step 7: Refresh navigator tree
+        // Step 9: Refresh navigator tree
         NavigatorEngine.clearCache()
         const roots = await NavigatorEngine.discoverWorkspaces(deps.httpRequest as any)
         deps.navigatorProvider.setRoots(roots)

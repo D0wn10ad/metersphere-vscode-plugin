@@ -21,14 +21,18 @@ export class WebViewController {
       if (!this.panel) return
       const { command, payload } = message
       if (command === 'sendRequest') {
-        const token = SettingsManager.getToken() || ''
+        const accessKey = SettingsManager.getAccessKey() || ''
+        const signature = SettingsManager.generateSignature()
         const reqPayload = payload as { url: string; method: string; headers?: Record<string, string>; body?: unknown }
         const headers: Record<string, string> = reqPayload.headers || {}
-        headers['Authorization'] = `Bearer ${token}`
+        headers['X-Access-Key'] = accessKey
+        headers['X-Signature'] = signature
         const resp = await httpRequest(reqPayload.method, reqPayload.url, headers, reqPayload.body)
         this.panel!.webview.postMessage({ command: 'response', payload: resp })
-      } else if (command === 'setToken') {
-        SettingsManager.setToken(payload as unknown as string)
+      } else if (command === 'setAccessKey') {
+        SettingsManager.setAccessKey(payload as unknown as string)
+      } else if (command === 'setSecretKey') {
+        SettingsManager.setSecretKey(payload as unknown as string)
       }
     })
     this.panel.onDidDispose(() => {
