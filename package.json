@@ -14,7 +14,7 @@
     "onCommand:metersphere.openNavigator",
     "onCommand:metersphere.prefillFromNode"
   ],
-  "main": "out/extension.js",
+  "main": "out/src/extension.js",
   "contributes": {
     "views": {
       "metersphere.navigator": [
@@ -23,6 +23,30 @@
           "name": "MeterSphere Navigator"
         }
       ]
+    },
+    "viewContainers": {
+      "metersphere.navigator": [
+        {
+          "id": "metersphere.navigator.view",
+          "title": "MeterSphere",
+          "icon": "$(graph)"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "MeterSphere",
+      "properties": {
+        "metersphere.msUrl": {
+          "type": "string",
+          "default": "http://localhost:8080",
+          "description": "MeterSphere server URL"
+        },
+        "metersphere.apiToken": {
+          "type": "string",
+          "default": "",
+          "description": "MeterSphere API token (get from User Settings → Token)"
+        }
+      }
     },
     "commands": [
       {
@@ -40,6 +64,10 @@
       {
         "command": "metersphere.prefillFromNode",
         "title": "MeterSphere: Prefill from Node"
+      },
+      {
+        "command": "metersphere.configure",
+        "title": "MeterSphere: Configure"
       }
     ]
   },
