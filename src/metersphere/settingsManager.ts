@@ -41,6 +41,12 @@ export class SettingsManager {
     vscode.workspace.getConfiguration().update(SettingsManager.SYNC_KEY, enabled, vscode.ConfigurationTarget.Global)
   }
 
+  static isConfigured(): boolean {
+    const msUrl = SettingsManager.getMsUrl()
+    const token = SettingsManager.getToken()
+    return msUrl !== undefined && msUrl !== '' && token !== undefined && token !== ''
+  }
+
   static getMsUrl(): string | undefined {
     return vscode.workspace.getConfiguration().get<string>(SettingsManager.MS_URL_KEY)
   }
