@@ -8,13 +8,38 @@
     "vscode": "^1.80.0"
   },
   "categories": ["Other"],
-  "activationEvents": ["onCommand:metersphere.openDebugger"],
+  "activationEvents": [
+    "onCommand:metersphere.openDebugger",
+    "onCommand:metersphere.refreshNavigator",
+    "onCommand:metersphere.openNavigator",
+    "onCommand:metersphere.prefillFromNode"
+  ],
   "main": "out/extension.js",
   "contributes": {
+    "views": {
+      "metersphere.navigator": [
+        {
+          "id": "metersphere.navigator.view",
+          "name": "MeterSphere Navigator"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "metersphere.openDebugger",
         "title": "MeterSphere: Open Debugger"
+      },
+      {
+        "command": "metersphere.refreshNavigator",
+        "title": "MeterSphere: Refresh Navigator"
+      },
+      {
+        "command": "metersphere.openNavigator",
+        "title": "MeterSphere: Open Navigator"
+      },
+      {
+        "command": "metersphere.prefillFromNode",
+        "title": "MeterSphere: Prefill from Node"
       }
     ]
   },

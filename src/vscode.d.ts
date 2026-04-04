@@ -26,6 +26,7 @@ declare module 'vscode' {
       viewColumn: ViewColumn,
       options?: { enableScripts?: boolean }
     ): WebviewPanel
+    function createTreeView<T>(viewId: string, options: { treeDataProvider: TreeDataProvider<T> }): TreeView<T>
   }
 
   export class WebviewPanel {
