@@ -114,7 +114,7 @@ export class CommandRouter {
 
     context.subscriptions.push(
       vscode.commands.registerCommand('metersphere.testConnection', async () => {
-        await vscode.window.showInformationMessage('Testing connection...')
+        deps.connectionManager.update(ConnectionState.Connecting)
         const result = await deps.connectionManager.testConnection()
         if (result.success) {
           const url = result.url ?? ''

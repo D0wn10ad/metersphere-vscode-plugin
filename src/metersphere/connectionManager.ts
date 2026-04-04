@@ -37,7 +37,7 @@ export class ConnectionManager {
         this.statusBarItem.command = undefined
         break
       case ConnectionState.Connected:
-        this.statusBarItem.text = '$(*) ' + this.extractHostname(message ?? '')
+        this.statusBarItem.text = '$(check) ' + this.extractHostname(message ?? '')
         this.statusBarItem.command = 'metersphere.statusBarMenu'
         break
       case ConnectionState.Disconnected:
