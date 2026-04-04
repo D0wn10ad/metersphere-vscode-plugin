@@ -25,8 +25,8 @@ export class WebViewController {
         const signature = SettingsManager.generateSignature()
         const reqPayload = payload as { url: string; method: string; headers?: Record<string, string>; body?: unknown }
         const headers: Record<string, string> = reqPayload.headers || {}
-        headers['X-Access-Key'] = accessKey
-        headers['X-Signature'] = signature
+        headers['accessKey'] = accessKey
+        headers['signature'] = signature
         const resp = await httpRequest(reqPayload.method, reqPayload.url, headers, reqPayload.body)
         this.panel!.webview.postMessage({ command: 'response', payload: resp })
       } else if (command === 'setAccessKey') {

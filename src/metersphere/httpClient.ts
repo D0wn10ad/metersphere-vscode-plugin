@@ -1,6 +1,6 @@
 // Lightweight HTTP client with configurable fetch implementation
 // Prefer global fetch, with a runtime fallback to node-fetch if available at runtime.
-import { TokenManager } from './tokenManager';
+import { SettingsManager } from './settingsManager';
 
 export interface HttpResponse {
   status: number
@@ -27,14 +27,15 @@ export async function httpRequest(
   url: string,
   headers: Record<string, string> = {},
   body?: any,
-  tokenOverride?: string
+  _tokenOverride?: string
 ): Promise<HttpResponse> {
   const start = Date.now()
-  // Apply token if present; allow override for tests
-  if (tokenOverride) {
-    headers['Authorization'] = `Bearer ${tokenOverride}`
-  } else {
-    TokenManager.applyAuth(headers)
+  // Apply AccessKey/SecretKey signature auth (v2 style)
+  const accessKey = SettingsManager.getAccessKey()
+  const secretKey = SettingsManager.getSecretKey()
+  if (accessKey && secretKey) {
+    headers['accessKey'] = accessKey
+    headers['signature'] = SettingsManager.generateSignature()
   }
   const fetchFn = getFetch()
   if (!fetchFn) {
