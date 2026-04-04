@@ -5,8 +5,10 @@
     "outDir": "out",
     "rootDir": ".",
     "strict": true,
+    "allowJs": true,
     "esModuleInterop": true,
     "skipLibCheck": true
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  "typeRoots": ["./node_modules/@types", "./src"]
 }

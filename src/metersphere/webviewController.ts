@@ -22,15 +22,13 @@ export class WebViewController {
       const { command, payload } = message
       if (command === 'sendRequest') {
         const token = SettingsManager.getToken() || ''
-        const url = payload.url
-        const method = payload.method
-        const headers: any = payload.headers || {}
-        const body = payload.body
+        const reqPayload = payload as { url: string; method: string; headers?: Record<string, string>; body?: unknown }
+        const headers: Record<string, string> = reqPayload.headers || {}
         headers['Authorization'] = `Bearer ${token}`
-        const resp = await httpRequest(method, url, headers, body)
+        const resp = await httpRequest(reqPayload.method, reqPayload.url, headers, reqPayload.body)
         this.panel!.webview.postMessage({ command: 'response', payload: resp })
       } else if (command === 'setToken') {
-        SettingsManager.setToken(payload)
+        SettingsManager.setToken(payload as unknown as string)
       }
     })
     this.panel.onDidDispose(() => {

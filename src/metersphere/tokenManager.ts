@@ -1,5 +1,11 @@
 import * as vscode from 'vscode'
 
+// Optional test-only storage hook to enable unit tests without VSCode API
+export interface TokenStorage {
+  getToken: () => string | undefined
+  setToken: (token: string | undefined) => void
+}
+
 // Storage keys (global settings)
 const TOKEN_KEY = 'metersphere.apiToken'
 
