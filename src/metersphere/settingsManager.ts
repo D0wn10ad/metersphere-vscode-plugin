@@ -6,6 +6,15 @@ export class SettingsManager {
   static WORKSPACE_KEY = 'metersphere.workspaceId'
   static PROJECT_KEY = 'metersphere.projectId'
   static SYNC_KEY = 'metersphere.syncEnabled'
+  static MS_URL_KEY = 'metersphere.msUrl'
+
+  static getMsUrl(): string | undefined {
+    return vscode.workspace.getConfiguration().get<string>(SettingsManager.MS_URL_KEY)
+  }
+
+  static setMsUrl(url: string): void {
+    vscode.workspace.getConfiguration().update(SettingsManager.MS_URL_KEY, url, vscode.ConfigurationTarget.Global)
+  }
 
   static getToken(): string | undefined {
     return vscode.workspace.getConfiguration().get<string>(SettingsManager.TOKEN_KEY)
