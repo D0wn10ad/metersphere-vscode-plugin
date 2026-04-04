@@ -25,16 +25,21 @@ export class NavigatorEngine {
     if (NavigatorEngine.workspaceCache) {
       return NavigatorEngine.workspaceCache
     }
-    const baseUrl = NavigatorEngine.getBaseUrl()
-    const resp = await fetchFn('GET', `${baseUrl}/workspace/list`, {})
-    const data = (resp.body as { data: MsWorkspace[] }).data ?? []
-    const nodes = data.map(ws => new NavigatorNode({
-      id: ws.id,
-      name: ws.name,
-      type: NodeType.WORKSPACE,
-    }))
-    NavigatorEngine.workspaceCache = nodes
-    return nodes
+    try {
+      const baseUrl = NavigatorEngine.getBaseUrl()
+      const resp = await fetchFn('GET', `${baseUrl}/workspace/list`, {})
+      const data = (resp.body as { data: MsWorkspace[] }).data ?? []
+      const nodes = data.map(ws => new NavigatorNode({
+        id: ws.id,
+        name: ws.name,
+        type: NodeType.WORKSPACE,
+      }))
+      NavigatorEngine.workspaceCache = nodes
+      return nodes
+    } catch (error) {
+      console.warn('NavigatorEngine: failed to discover workspaces:', error)
+      return []
+    }
   }
 
   static buildTree(projects: MsProject[]): NavigatorNode[] {
