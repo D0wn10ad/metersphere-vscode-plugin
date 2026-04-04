@@ -39,16 +39,12 @@ export async function httpRequest(
     throw new Error('Fetch API is not available in this environment')
   }
 
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
-  try {
+  const doFetch = async () => {
     const res = await fetchFn(url, {
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
-      signal: controller.signal,
     })
-    clearTimeout(timeoutId)
     const durationMs = Date.now() - start
     let contentType = ''
     try {
@@ -68,11 +64,11 @@ export async function httpRequest(
       body: parsed,
       durationMs,
     }
-  } catch (error: any) {
-    clearTimeout(timeoutId)
-    if (error?.name === 'AbortError' || error?.message?.includes('aborted')) {
-      throw new Error(`Request timed out after ${REQUEST_TIMEOUT_MS / 1000}s`)
-    }
-    throw error
   }
+
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error(`Request timed out after ${REQUEST_TIMEOUT_MS / 1000}s`)), REQUEST_TIMEOUT_MS)
+  )
+
+  return Promise.race([doFetch(), timeoutPromise])
 }

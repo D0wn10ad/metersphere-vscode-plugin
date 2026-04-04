@@ -64,7 +64,6 @@ export class CommandRouter {
 
         const accessKey = await vscode.window.showInputBox({
           title: 'MeterSphere Access Key',
-          password: true,
           prompt: 'Enter your MeterSphere Access Key',
         })
 
@@ -75,7 +74,6 @@ export class CommandRouter {
 
         const secretKey = await vscode.window.showInputBox({
           title: 'MeterSphere Secret Key',
-          password: true,
           prompt: 'Enter your MeterSphere Secret Key',
         })
 
