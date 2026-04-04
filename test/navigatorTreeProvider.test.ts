@@ -9,7 +9,7 @@ describe('NavigatorTreeDataProvider', () => {
   })
 
   test('getChildren returns empty array when no roots set', () => {
-    const children = provider.getChildren(undefined)
+    const children = provider.getChildren(undefined) as NavigatorNode[]
     expect(Array.isArray(children)).toBe(true)
     expect(children.length).toBe(0)
   })
@@ -17,7 +17,7 @@ describe('NavigatorTreeDataProvider', () => {
   test('getChildren returns root nodes after setRoots', () => {
     const wsNode = new NavigatorNode({ id: 'ws-1', name: 'WS', type: NodeType.WORKSPACE })
     provider.setRoots([wsNode])
-    const children = provider.getChildren(undefined)
+    const children = provider.getChildren(undefined) as NavigatorNode[]
     expect(children.length).toBe(1)
     expect(children[0].id).toBe('ws-1')
   })
@@ -27,7 +27,7 @@ describe('NavigatorTreeDataProvider', () => {
     const apiNode = new NavigatorNode({ id: 'api-1', name: 'Get Users', type: NodeType.API })
     folder.addChild(apiNode)
     provider.setRoots([folder])
-    const children = provider.getChildren(folder)
+    const children = provider.getChildren(folder) as NavigatorNode[]
     expect(children.length).toBe(1)
     expect(children[0].id).toBe('api-1')
   })

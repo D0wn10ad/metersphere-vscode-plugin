@@ -15,6 +15,7 @@ export class CommandRouter {
   ): void {
     context.subscriptions.push(
       vscode.commands.registerCommand('metersphere.refreshNavigator', async () => {
+        NavigatorEngine.clearCache()
         const roots = await NavigatorEngine.discoverWorkspaces(deps.httpRequest as any)
         deps.navigatorProvider.setRoots(roots)
       })
