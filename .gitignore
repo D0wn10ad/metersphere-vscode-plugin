@@ -3,3 +3,4 @@ out/
 .vscode/
 dist/
 .DS_Store
+.worktrees/
