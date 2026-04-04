@@ -41,10 +41,25 @@
           "default": "http://localhost:8080",
           "description": "MeterSphere server URL"
         },
-        "metersphere.apiToken": {
+        "metersphere.accessKey": {
           "type": "string",
           "default": "",
-          "description": "MeterSphere API token (get from User Settings → Token)"
+          "description": "MeterSphere Access Key (from User Settings → Token)"
+        },
+        "metersphere.secretKey": {
+          "type": "string",
+          "default": "",
+          "description": "MeterSphere Secret Key (from User Settings → Token)"
+        },
+        "metersphere.workspaceId": {
+          "type": "string",
+          "default": "",
+          "description": "Selected MeterSphere workspace ID (auto-synced from Navigator)"
+        },
+        "metersphere.projectId": {
+          "type": "string",
+          "default": "",
+          "description": "Selected MeterSphere project ID (auto-synced from Navigator)"
         }
       }
     },
