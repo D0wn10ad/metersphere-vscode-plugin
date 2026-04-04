@@ -37,6 +37,11 @@ declare module 'vscode' {
     function createTreeView<T>(viewId: string, options: { treeDataProvider: TreeDataProvider<T> }): TreeView<T>
     function showInputBox(options?: InputBoxOptions): Promise<string | undefined>
     function showInformationMessage(message: string): Promise<void>
+    function createStatusBarItem(alignment?: StatusBarAlignment, priority?: number): StatusBarItem
+    function showQuickPick<T>(
+      items: T[] | Thenable<T[]>,
+      options?: { placeHolder?: string; title?: string }
+    ): Thenable<T | undefined>
   }
 
   export class WebviewPanel {
@@ -65,6 +70,11 @@ declare module 'vscode' {
     Three = 3
   }
 
+  export enum StatusBarAlignment {
+    Left = -1,
+    Right = 1,
+  }
+
   export namespace commands {
     // eslint-disable-next-line @typescript-eslint/ban-types
     function registerCommand(command: string, callback: Function): Disposable
@@ -73,6 +83,15 @@ declare module 'vscode' {
 
   export interface Disposable {
     dispose(): void
+  }
+
+  export interface StatusBarItem extends Disposable {
+    text: string
+    tooltip?: string
+    color?: string
+    command?: string
+    show(): void
+    hide(): void
   }
 
   export interface ExtensionContext {
