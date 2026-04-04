@@ -19,6 +19,14 @@ declare module 'vscode' {
     update(key: string, value: unknown, target?: number): Promise<void>
   }
 
+  export interface InputBoxOptions {
+    title?: string
+    placeholder?: string
+    prompt?: string
+    password?: boolean
+    value?: string
+  }
+
   export namespace window {
     function createWebviewPanel(
       id: string,
@@ -27,6 +35,8 @@ declare module 'vscode' {
       options?: { enableScripts?: boolean }
     ): WebviewPanel
     function createTreeView<T>(viewId: string, options: { treeDataProvider: TreeDataProvider<T> }): TreeView<T>
+    function showInputBox(options?: InputBoxOptions): Promise<string | undefined>
+    function showInformationMessage(message: string): Promise<void>
   }
 
   export class WebviewPanel {

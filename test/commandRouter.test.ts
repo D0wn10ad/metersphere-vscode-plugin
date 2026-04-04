@@ -12,7 +12,7 @@ describe('CommandRouter', () => {
       httpRequest: () => Promise.resolve({ status: 200, body: { data: [] } }),
       getActiveWebviewPanel: () => undefined,
     } as any)
-    expect(disposables.length).toBe(3)
+    expect(disposables.length).toBe(4)
   })
 
   test('prefillFromNode dispatches to webview', () => {
