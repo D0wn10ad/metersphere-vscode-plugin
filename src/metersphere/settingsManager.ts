@@ -77,8 +77,8 @@ export class SettingsManager {
     const uuid = crypto.randomUUID()
     const timestamp = Date.now()
     const plaintext = `${ak}|${uuid}|${timestamp}`
-    const key = Buffer.from(sk, 'utf8')
-    const iv = Buffer.from(ak, 'utf8')
+    const key = Buffer.from(sk.padEnd(32).slice(0, 32), 'utf8')
+    const iv = Buffer.from(ak.padEnd(16).slice(0, 16), 'utf8')
     const cipher = crypto.createCipheriv('aes-256-cbc', key, iv)
     let sig = cipher.update(plaintext, 'utf8', 'base64')
     sig += cipher.final('base64')
