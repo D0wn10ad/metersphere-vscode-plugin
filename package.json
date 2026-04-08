@@ -8,13 +8,102 @@
     "vscode": "^1.80.0"
   },
   "categories": ["Other"],
-  "activationEvents": ["onCommand:metersphere.openDebugger"],
-  "main": "out/extension.js",
+  "activationEvents": [
+    "*",
+    "onCommand:metersphere.openDebugger",
+    "onCommand:metersphere.refreshNavigator",
+    "onCommand:metersphere.openNavigator",
+    "onCommand:metersphere.prefillFromNode",
+    "onCommand:metersphere.testConnection",
+    "onCommand:metersphere.statusBarMenu",
+    "onCommand:metersphere.configure"
+  ],
+  "main": "out/src/extension.js",
   "contributes": {
+    "views": {
+      "metersphere.navigator": [
+        {
+          "id": "metersphere.navigator.view",
+          "name": "MeterSphere Navigator"
+        }
+      ]
+    },
+    "viewContainers": {
+      "metersphere.navigator": [
+        {
+          "id": "metersphere.navigator.view",
+          "title": "MeterSphere",
+          "icon": "$(graph)"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "MeterSphere",
+      "properties": {
+        "metersphere.msUrl": {
+          "type": "string",
+          "default": "http://localhost:8080",
+          "description": "MeterSphere server URL"
+        },
+        "metersphere.accessKey": {
+          "type": "string",
+          "default": "",
+          "description": "MeterSphere Access Key (from User Settings → Token)"
+        },
+        "metersphere.secretKey": {
+          "type": "string",
+          "default": "",
+          "description": "MeterSphere Secret Key (from User Settings → Token)"
+        },
+        "metersphere.workspaceId": {
+          "type": "string",
+          "default": "",
+          "description": "Selected MeterSphere workspace ID (auto-synced from Navigator)"
+        },
+        "metersphere.projectId": {
+          "type": "string",
+          "default": "",
+          "description": "Selected MeterSphere project ID (auto-synced from Navigator)"
+        },
+        "metersphere.debugEnabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable debug logging to Output panel"
+        }
+      }
+    },
     "commands": [
       {
         "command": "metersphere.openDebugger",
         "title": "MeterSphere: Open Debugger"
+      },
+      {
+        "command": "metersphere.refreshNavigator",
+        "title": "MeterSphere: Refresh Navigator"
+      },
+      {
+        "command": "metersphere.openNavigator",
+        "title": "MeterSphere: Open Navigator"
+      },
+      {
+        "command": "metersphere.prefillFromNode",
+        "title": "MeterSphere: Prefill from Node"
+      },
+      {
+        "command": "metersphere.configure",
+        "title": "MeterSphere: Configure"
+      },
+      {
+        "command": "metersphere.testConnection",
+        "title": "MeterSphere: Test Connection"
+      },
+      {
+        "command": "metersphere.statusBarMenu",
+        "title": "MeterSphere: Status Bar Menu"
+      },
+      {
+        "command": "metersphere.toggleDebug",
+        "title": "MeterSphere: Toggle Debug Mode"
       }
     ]
   },

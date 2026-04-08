@@ -5,36 +5,36 @@ declare module 'vscode' {
     WorkspaceFolder: number
   }
 
-  export namespace workspace {
-    const rootPath: string | undefined
-    function getConfiguration(): Configuration &
-      Readonly<{
-        get<T>(key: string): T | undefined
-        update(key: string, value: unknown, target?: number): Promise<void>
-      }>
-  }
-
   export interface Configuration {
     get<T>(key: string): T | undefined
     update(key: string, value: unknown, target?: number): Promise<void>
   }
 
-  export namespace window {
-    function createWebviewPanel(
-      id: string,
-      title: string,
-      viewColumn: ViewColumn,
-      options?: { enableScripts?: boolean }
-    ): WebviewPanel
+  export interface InputBoxOptions {
+    title?: string
+    placeholder?: string
+    prompt?: string
+    password?: boolean
+    value?: string
   }
 
-  export class WebviewPanel {
-    readonly viewType: string
-    readonly title: string
-    webview: Webview
-    onDidDispose: { (listener: () => void): Disposable }
-    dispose(): void
-    reveal(viewColumn: ViewColumn): void
+  export interface StatusBarItem extends Disposable {
+    text: string
+    tooltip?: string
+    color?: string
+    command?: string
+    show(): void
+    hide(): void
+  }
+
+  export enum StatusBarAlignment {
+    Left = -1,
+    Right = 1,
+  }
+
+  export interface QuickPickOptions {
+    placeHolder?: string
+    title?: string
   }
 
   export interface WebviewMessage {
@@ -52,10 +52,6 @@ declare module 'vscode' {
     One = 1,
     Two = 2,
     Three = 3
-  }
-
-  export namespace commands {
-    function registerCommand(command: string, callback: (...args: unknown[]) => unknown): Disposable
   }
 
   export interface Disposable {
@@ -76,7 +72,91 @@ declare module 'vscode' {
     update(key: string, value: unknown): Promise<void>
   }
 
-  export const workspace: typeof workspace
-  export const window: typeof window
-  export const commands: typeof commands
+  export type TreeItemCollapsibleState = 0 | 1 | 2
+
+  export interface TreeItem {
+    id?: string
+    label?: string
+    collapsibleState?: TreeItemCollapsibleState
+    tooltip?: string
+    command?: unknown
+    iconPath?: unknown
+    contextValue?: string
+    children?: TreeItem[]
+  }
+
+  export interface TreeDataProvider<T> {
+    getTreeItem(element: T): TreeItem | Thenable<TreeItem>
+    getChildren(element?: T): T[] | Thenable<T[]> | null | Thenable<null>
+    onDidChangeTreeData?: Event<T | undefined | null>
+  }
+
+  export interface TreeView<T> extends Disposable {
+    readonly treeDataProvider: TreeDataProvider<T>
+    readonly selection: T[]
+    dispose(): void
+  }
+
+  export class EventEmitter<T> {
+    constructor()
+    event: Event<T>
+    fire(data?: T): void
+    dispose(): void
+  }
+
+  export type Event<T> = (listener: (e: T) => void) => Disposable
+
+  export type Thenable<T> = Promise<T>
+
+  export interface WebviewPanel {
+    readonly viewType: string
+    readonly title: string
+    webview: Webview
+    onDidDispose: { (listener: () => void): Disposable }
+    dispose(): void
+    reveal(viewColumn: ViewColumn): void
+  }
+
+  export interface OutputChannel {
+    name: string
+    append(message: string): void
+    appendLine(message: string): void
+    show(preserveFocus?: boolean): void
+    hide(): void
+    dispose(): void
+  }
+
+  export interface Window {
+    createWebviewPanel(
+      id: string,
+      title: string,
+      viewColumn: ViewColumn,
+      options?: { enableScripts?: boolean }
+    ): WebviewPanel
+    createTreeView<T>(viewId: string, options: { treeDataProvider: TreeDataProvider<T> }): TreeView<T>
+    createOutputChannel(name: string): OutputChannel
+    showInputBox(options?: InputBoxOptions): Promise<string | undefined>
+    showInformationMessage(message: string): Promise<void>
+    showErrorMessage(message: string): Promise<void>
+    createStatusBarItem(alignment?: StatusBarAlignment, priority?: number): StatusBarItem
+    showQuickPick<T>(
+      items: T[] | Thenable<T[]>,
+      options?: QuickPickOptions
+    ): Thenable<T | undefined>
+  }
+
+  export interface Workspace {
+    readonly rootPath: string | undefined
+    getConfiguration(section?: string): Configuration
+  }
+
+  export interface Commands {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    registerCommand(command: string, callback: (...args: any[]) => any): Disposable
+    executeCommand(command: string, ...args: unknown[]): Thenable<unknown>
+  }
+
+  export const workspace: Workspace
+  export const window: Window
+  export const commands: Commands
 }

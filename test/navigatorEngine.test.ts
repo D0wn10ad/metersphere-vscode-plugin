@@ -17,10 +17,11 @@ describe('NavigatorEngine', () => {
   })
 
   test('discovers workspaces', async () => {
-    const engines = await NavigatorEngine.discoverWorkspaces(mockHttpRequest as any)
-    expect(engines.length).toBeGreaterThan(0)
-    expect(engines[0].id).toBe('ws-1')
-    expect(engines[0].name).toBe('Test Workspace')
+    const nodes = await NavigatorEngine.discoverWorkspaces(mockHttpRequest as any)
+    expect(nodes.length).toBeGreaterThan(0)
+    expect(nodes[0].id).toBe('ws-1')
+    expect(nodes[0].name).toBe('Test Workspace')
+    expect(nodes[0].type).toBe(NodeType.WORKSPACE)
   })
 
   test('builds tree from project list', async () => {

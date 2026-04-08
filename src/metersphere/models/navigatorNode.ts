@@ -36,7 +36,7 @@ export class NavigatorNode {
     this.iconPath = options.iconPath
     this.tooltip = options.tooltip
     if (options.type === NodeType.FOLDER || options.type === NodeType.PROJECT || options.type === NodeType.WORKSPACE) {
-      this.collapsibleState = 2
+      this.collapsibleState = 2 // Expanded
     }
   }
 
