@@ -28,14 +28,18 @@ export class NavigatorEngine {
     NavigatorEngine.workspaceCache = null
   }
 
-  private static buildAuthHeaders(): Record<string, string> {
+  private static buildAuthHeaders(contentType?: string): Record<string, string> {
     const ak = SettingsManager.getAccessKey()
     const sk = SettingsManager.getSecretKey()
     if (!ak || !sk) return {}
-    return {
+    const headers: Record<string, string> = {
       accessKey: ak,
       signature: SettingsManager.generateSignature(ak, sk),
     }
+    if (contentType) {
+      headers['Content-Type'] = contentType
+    }
+    return headers
   }
 
   static async discoverWorkspaces(
@@ -76,7 +80,7 @@ export class NavigatorEngine {
   ): Promise<NavigatorNode[]> {
     const baseUrl = NavigatorEngine.getBaseUrl()
     const body = { workspaceIds: [workspaceId] }
-    const headers = NavigatorEngine.buildAuthHeaders()
+    const headers = NavigatorEngine.buildAuthHeaders('application/json')
     const url = `${baseUrl}/api/project/list/related`
     
     DebugLogger.log('Navigator', 'Discovering projects', { workspaceId, url, hasHeaders: !!headers.accessKey })
