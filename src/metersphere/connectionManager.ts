@@ -68,7 +68,7 @@ export class ConnectionManager {
 
     const doTest = async () => {
       try {
-        const resp = await httpRequest('GET', `${msUrl}/currentUser`, headers)
+        const resp = await httpRequest('GET', `${msUrl}/api/currentUser`, headers)
         if (resp.status === 200) {
           this.currentUrl = msUrl
           this.update(ConnectionState.Connected, msUrl)

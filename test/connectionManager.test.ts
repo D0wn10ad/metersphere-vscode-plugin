@@ -162,7 +162,7 @@ describe('ConnectionManager', () => {
 
       const call = (httpRequest as jest.Mock).mock.calls[0]
       expect(call[0]).toBe('GET')
-      expect(call[1]).toBe('http://custom.example.com/currentUser')
+      expect(call[1]).toBe('http://custom.example.com/api/currentUser')
       expect(call[2]).toMatchObject({
         accessKey: 'new-ak',
         signature: 'mock-signature',

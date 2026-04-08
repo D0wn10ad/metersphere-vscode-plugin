@@ -46,7 +46,7 @@ export class NavigatorEngine {
     try {
       const baseUrl = NavigatorEngine.getBaseUrl()
       const headers = NavigatorEngine.buildAuthHeaders()
-      const resp = await fetchFn('GET', `${baseUrl}/workspace/list/userworkspace`, headers)
+      const resp = await fetchFn('GET', `${baseUrl}/api/workspace/list/userworkspace`, headers)
       const data = (resp.body as { data: MsWorkspace[] }).data ?? []
       const nodes = data.map(ws => new NavigatorNode({
         id: ws.id,
@@ -68,7 +68,7 @@ export class NavigatorEngine {
     const baseUrl = NavigatorEngine.getBaseUrl()
     const body = { workspaceIds: [workspaceId] }
     const headers = NavigatorEngine.buildAuthHeaders()
-    const resp = await fetchFn('POST', `${baseUrl}/project/list/related`, headers, body)
+      const resp = await fetchFn('POST', `${baseUrl}/api/project/list/related`, headers, body)
     const data = (resp.body as { data: MsProject[] }).data ?? []
     return data.map(proj => new NavigatorNode({
       id: proj.id,
@@ -84,7 +84,7 @@ export class NavigatorEngine {
   ): Promise<NavigatorNode[]> {
     const baseUrl = NavigatorEngine.getBaseUrl()
     const headers = NavigatorEngine.buildAuthHeaders()
-    const resp = await fetchFn('GET', `${baseUrl}/api/module/list/${projectId}/HTTP`, headers)
+      const resp = await fetchFn('GET', `${baseUrl}/api/api/module/list/${projectId}/HTTP`, headers)
     const data = (resp.body as { data: MsModule[] }).data ?? []
     return data.map(mod => new NavigatorNode({
       id: mod.id,
