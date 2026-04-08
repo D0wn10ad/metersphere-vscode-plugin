@@ -18,7 +18,7 @@ describe('CommandRouter', () => {
       getActiveWebviewPanel: () => undefined,
       connectionManager: mockConnectionManager,
     } as any)
-    expect(disposables.length).toBe(6)
+    expect(disposables.length).toBe(7)
   })
 
   test('prefillFromNode dispatches to webview', () => {

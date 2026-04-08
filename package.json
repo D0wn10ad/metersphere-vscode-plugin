@@ -64,6 +64,11 @@
           "type": "string",
           "default": "",
           "description": "Selected MeterSphere project ID (auto-synced from Navigator)"
+        },
+        "metersphere.debugEnabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable debug logging to Output panel"
         }
       }
     },
@@ -95,6 +100,10 @@
       {
         "command": "metersphere.statusBarMenu",
         "title": "MeterSphere: Status Bar Menu"
+      },
+      {
+        "command": "metersphere.toggleDebug",
+        "title": "MeterSphere: Toggle Debug Mode"
       }
     ]
   },

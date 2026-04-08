@@ -4,6 +4,7 @@ import { NavigatorEngine } from './navigatorEngine'
 import { NavigatorNode } from './models/navigatorNode'
 import { SettingsManager } from './settingsManager'
 import { ConnectionManager, ConnectionState } from './connectionManager'
+import { DebugLogger } from './debugLogger'
 
 export class CommandRouter {
   static registerAll(
@@ -157,6 +158,17 @@ export class CommandRouter {
             vscode.commands.executeCommand('metersphere.openNavigator')
             break
         }
+      })
+    )
+
+    context.subscriptions.push(
+      vscode.commands.registerCommand('metersphere.toggleDebug', async () => {
+        const config = vscode.workspace.getConfiguration('metersphere')
+        const current = config.get<boolean>('debugEnabled') ?? false
+        await config.update('debugEnabled', !current)
+        const newState = !current ? 'ON' : 'OFF'
+        DebugLogger.log('Command', `Debug mode toggled: ${newState}`, { enabled: !current })
+        vscode.window.showInformationMessage(`Debug mode: ${newState}`)
       })
     )
   }

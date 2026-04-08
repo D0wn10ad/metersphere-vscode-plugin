@@ -3,6 +3,7 @@ import { NavigatorNode, NodeType } from './models/navigatorNode'
 import { HttpResponse } from './httpClient'
 import { NavigatorEngine } from './navigatorEngine'
 import { ConnectionManager, ConnectionState } from './connectionManager'
+import { DebugLogger } from './debugLogger'
 
 export class NavigatorTreeDataProvider implements vscode.TreeDataProvider<NavigatorNode> {
   private _onDidChangeTreeData = new vscode.EventEmitter<NavigatorNode | undefined>()
@@ -28,21 +29,32 @@ export class NavigatorTreeDataProvider implements vscode.TreeDataProvider<Naviga
   }
 
   async getChildren(element?: NavigatorNode): Promise<NavigatorNode[]> {
+    DebugLogger.log('TreeProvider', 'getChildren called', { elementType: element?.type, elementId: element?.id, elementName: element?.name })
+    
     if (!element) {
+      DebugLogger.log('TreeProvider', 'Returning roots', { count: this.roots.length })
       return this.roots
     }
     if (element.type === NodeType.WORKSPACE && this.fetchFn) {
+      DebugLogger.log('TreeProvider', 'Expanding workspace', { workspaceId: element.id })
       try {
-        return await NavigatorEngine.discoverProjects(element.id, this.fetchFn)
-      } catch {
+        const projects = await NavigatorEngine.discoverProjects(element.id, this.fetchFn)
+        DebugLogger.log('TreeProvider', 'Workspace expanded', { projectCount: projects.length })
+        return projects
+      } catch (error) {
+        DebugLogger.error('TreeProvider', 'Failed to expand workspace', error)
         this.connectionManager?.update(ConnectionState.Disconnected)
         return []
       }
     }
     if (element.type === NodeType.PROJECT && this.fetchFn) {
+      DebugLogger.log('TreeProvider', 'Expanding project', { projectId: element.id, projectName: element.name })
       try {
-        return await NavigatorEngine.discoverModules(element.id, this.fetchFn)
-      } catch {
+        const modules = await NavigatorEngine.discoverModules(element.id, this.fetchFn)
+        DebugLogger.log('TreeProvider', 'Project expanded', { moduleCount: modules.length })
+        return modules
+      } catch (error) {
+        DebugLogger.error('TreeProvider', 'Failed to expand project', error)
         this.connectionManager?.update(ConnectionState.Disconnected)
         return []
       }

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode'
 import { httpRequest } from './httpClient'
 import { SettingsManager } from './settingsManager'
+import { DebugLogger } from './debugLogger'
 
 export enum ConnectionState {
   Connected = 'connected',
@@ -56,7 +57,10 @@ export class ConnectionManager {
     const ak = accessKey ?? SettingsManager.getAccessKey()
     const sk = secretKey ?? SettingsManager.getSecretKey()
 
+    DebugLogger.log('Connection', 'testConnection called', { msUrl, hasAk: !!ak, hasSk: !!sk })
+
     if (!msUrl || !ak || !sk) {
+      DebugLogger.error('Connection', 'testConnection failed: not configured', { msUrl, hasAk: !!ak, hasSk: !!sk })
       return { success: false, error: 'Not configured' }
     }
 
@@ -69,6 +73,7 @@ export class ConnectionManager {
     const doTest = async () => {
       try {
         const resp = await httpRequest('GET', `${msUrl}/api/currentUser`, headers)
+        DebugLogger.log('Connection', 'currentUser response', { status: resp.status, body: resp.body })
         if (resp.status === 200) {
           this.currentUrl = msUrl
           this.update(ConnectionState.Connected, msUrl)
@@ -78,6 +83,7 @@ export class ConnectionManager {
           return { success: false, error: `HTTP ${resp.status}` }
         }
       } catch (error) {
+        DebugLogger.error('Connection', 'currentUser request failed', error)
         this.update(ConnectionState.Disconnected)
         return { success: false, error: String(error) }
       }
@@ -91,6 +97,7 @@ export class ConnectionManager {
     try {
       return await Promise.race([doTest(), timeout])
     } catch (error) {
+      DebugLogger.error('Connection', 'testConnection timeout/failure', error)
       this.update(ConnectionState.Disconnected)
       return { success: false, error: String(error) }
     }

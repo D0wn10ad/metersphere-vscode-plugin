@@ -117,6 +117,15 @@ declare module 'vscode' {
     reveal(viewColumn: ViewColumn): void
   }
 
+  export interface OutputChannel {
+    name: string
+    append(message: string): void
+    appendLine(message: string): void
+    show(preserveFocus?: boolean): void
+    hide(): void
+    dispose(): void
+  }
+
   export interface Window {
     createWebviewPanel(
       id: string,
@@ -125,6 +134,7 @@ declare module 'vscode' {
       options?: { enableScripts?: boolean }
     ): WebviewPanel
     createTreeView<T>(viewId: string, options: { treeDataProvider: TreeDataProvider<T> }): TreeView<T>
+    createOutputChannel(name: string): OutputChannel
     showInputBox(options?: InputBoxOptions): Promise<string | undefined>
     showInformationMessage(message: string): Promise<void>
     showErrorMessage(message: string): Promise<void>
@@ -137,7 +147,7 @@ declare module 'vscode' {
 
   export interface Workspace {
     readonly rootPath: string | undefined
-    getConfiguration(): Configuration
+    getConfiguration(section?: string): Configuration
   }
 
   export interface Commands {
