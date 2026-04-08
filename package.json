@@ -9,6 +9,7 @@
   },
   "categories": ["Other"],
   "activationEvents": [
+    "*",
     "onCommand:metersphere.openDebugger",
     "onCommand:metersphere.refreshNavigator",
     "onCommand:metersphere.openNavigator",
