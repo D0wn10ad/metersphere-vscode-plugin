@@ -84,4 +84,20 @@ export class SettingsManager {
     sig += cipher.final('base64')
     return sig
   }
+
+  static buildAuthHeaders(contentType?: string): Record<string, string> {
+    const ak = SettingsManager.getAccessKey()
+    const sk = SettingsManager.getSecretKey()
+    if (!ak || !sk) {
+      return {}
+    }
+    const headers: Record<string, string> = {
+      accessKey: ak,
+      signature: SettingsManager.generateSignature(ak, sk),
+    }
+    if (contentType) {
+      headers['Content-Type'] = contentType
+    }
+    return headers
+  }
 }

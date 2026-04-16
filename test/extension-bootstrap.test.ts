@@ -1,9 +1,9 @@
 describe('Phase 2 Extension Bootstrap', () => {
-  test('metersphere.navigator.view is registered in package.json', () => {
+  test('metersphere.navigator is registered in package.json', () => {
     const pkg = require('../package.json')
-    const views = pkg.contributes?.views?.['metersphere.navigator'] ?? []
+    const views = pkg.contributes?.views?.['metersphere-sidebar'] ?? []
     expect(views.length).toBeGreaterThan(0)
-    expect(views[0].id).toBe('metersphere.navigator.view')
+    expect(views[0].id).toBe('metersphere.navigator')
   })
 
   test('Phase 2 commands are registered in package.json', () => {

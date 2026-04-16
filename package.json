@@ -20,20 +20,21 @@
   ],
   "main": "out/src/extension.js",
   "contributes": {
-    "views": {
-      "metersphere.navigator": [
+    "viewsContainers": {
+      "activitybar": [
         {
-          "id": "metersphere.navigator.view",
-          "name": "MeterSphere Navigator"
+          "id": "metersphere-sidebar",
+          "title": "MeterSphere",
+          "icon": "media/icon.svg"
         }
       ]
     },
-    "viewContainers": {
-      "metersphere.navigator": [
+    "views": {
+      "metersphere-sidebar": [
         {
-          "id": "metersphere.navigator.view",
-          "title": "MeterSphere",
-          "icon": "$(graph)"
+          "id": "metersphere.navigator",
+          "name": "Navigator",
+          "type": "tree"
         }
       ]
     },
@@ -104,13 +105,100 @@
       {
         "command": "metersphere.toggleDebug",
         "title": "MeterSphere: Toggle Debug Mode"
+      },
+      {
+        "command": "metersphere.uploadFromEditor",
+        "title": "MeterSphere: Upload to MeterSphere"
+      },
+      {
+        "command": "metersphere.uploadFromFileExplorer",
+        "title": "MeterSphere: Upload to MeterSphere"
+      },
+      {
+        "command": "metersphere.showEnvironment",
+        "title": "Show Environment",
+        "icon": "$(globe)"
+      },
+      {
+        "command": "metersphere.showHistory",
+        "title": "Show History",
+        "icon": "$(history)"
+      },
+      {
+        "command": "metersphere.showSettings",
+        "title": "Show Settings",
+        "icon": "$(settings)"
+      },
+      {
+        "command": "metersphere.showSync",
+        "title": "Show Sync",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "metersphere.syncToMs",
+        "title": "MeterSphere: Sync to MeterSphere"
+      },
+      {
+        "command": "metersphere.uploadFromNavigator",
+        "title": "MeterSphere: Upload to MeterSphere"
       }
-    ]
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "metersphere.uploadFromEditor",
+          "group": "meterSphere@1"
+        }
+      ],
+      "filesExplorer/context": [
+        {
+          "command": "metersphere.uploadFromFileExplorer",
+          "group": "meterSphere@1"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "metersphere.showEnvironment",
+          "when": "view == metersphere.navigator",
+          "group": "navigation@1",
+          "icon": "$(globe)"
+        },
+        {
+          "command": "metersphere.showHistory",
+          "when": "view == metersphere.navigator",
+          "group": "navigation@2",
+          "icon": "$(history)"
+        },
+        {
+          "command": "metersphere.showSync",
+          "when": "view == metersphere.navigator",
+          "group": "navigation@3",
+          "icon": "$(sync)"
+        },
+        {
+          "command": "metersphere.showSettings",
+          "when": "view == metersphere.navigator",
+          "group": "navigation@4",
+          "icon": "$(settings)"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "metersphere.uploadFromNavigator",
+          "when": "view == metersphere.navigator",
+          "group": "meterSphere@1"
+        }
+      ]
+    }
   },
   "scripts": {
     "compile": "tsc -p tsconfig.json",
     "watch": "tsc -watch -p tsconfig.json",
     "test": "jest"
+  },
+  "dependencies": {
+    "form-data": "^4.0.5",
+    "asynckit": "^0.4.0"
   },
   "devDependencies": {
     "typescript": "^4.9.5",

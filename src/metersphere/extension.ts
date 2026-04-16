@@ -7,33 +7,67 @@ import { httpRequest } from './httpClient'
 import { SettingsManager } from './settingsManager'
 import { NavigatorNode, NodeType } from './models/navigatorNode'
 import { ConnectionManager, ConnectionState } from './connectionManager'
+import { ContextHolder } from './contextHolder'
+import { DebugLogger } from './debugLogger'
+import { SidebarView } from './views/sidebarView'
+
+class EnvironmentViewProvider implements vscode.WebviewViewProvider {
+  resolveWebviewView(webviewView: vscode.WebviewView): void {
+    webviewView.webview.html = SidebarView.getEnvironmentHtml()
+  }
+}
+
+class HistoryViewProvider implements vscode.WebviewViewProvider {
+  resolveWebviewView(webviewView: vscode.WebviewView): void {
+    webviewView.webview.html = SidebarView.getHistoryHtml()
+  }
+}
+
+class SyncViewProvider implements vscode.WebviewViewProvider {
+  resolveWebviewView(webviewView: vscode.WebviewView): void {
+    webviewView.webview.html = SidebarView.getSyncHtml()
+  }
+}
+
+class SettingsViewProvider implements vscode.WebviewViewProvider {
+  resolveWebviewView(webviewView: vscode.WebviewView): void {
+    webviewView.webview.html = SidebarView.getSettingsHtml()
+  }
+}
 
 export function activate(context: vscode.ExtensionContext): void {
+  ContextHolder.setContext(context)
+
+  context.subscriptions.push(vscode.window.registerWebviewViewProvider('metersphere.environment', new EnvironmentViewProvider()))
+  context.subscriptions.push(vscode.window.registerWebviewViewProvider('metersphere.history', new HistoryViewProvider()))
+  context.subscriptions.push(vscode.window.registerWebviewViewProvider('metersphere.sync', new SyncViewProvider()))
+  context.subscriptions.push(vscode.window.registerWebviewViewProvider('metersphere.settings', new SettingsViewProvider()))
+
   const wvc = new WebViewController(context)
   context.subscriptions.push(
     vscode.commands.registerCommand('metersphere.openDebugger', () => wvc.open())
   )
 
-  // Connection manager — single source of truth for connection state
   const connectionManager = new ConnectionManager(context)
 
   const navigatorProvider = new NavigatorTreeDataProvider(connectionManager)
   navigatorProvider.setFetchFn(httpRequest)
 
-  const treeView = vscode.window.createTreeView('metersphere.navigator.view', {
+  const treeView = vscode.window.createTreeView('metersphere.navigator', {
     treeDataProvider: navigatorProvider,
   })
 
-  // Wire auto-sync for workspace/project selection
-  // Note: onDidChangeSelection may not be available in all VSCode versions/mock
   if ('onDidChangeSelection' in treeView && typeof (treeView as any).onDidChangeSelection === 'function') {
     (treeView as any).onDidChangeSelection((e: { selection: NavigatorNode[] }) => {
       const node = e.selection[0]
       if (node) {
         if (node.type === NodeType.WORKSPACE) {
           SettingsManager.setWorkspaceId(node.id)
+          SettingsManager.setProjectId('')
+          DebugLogger.log('Navigator', `Workspace selected: ${node.id}`, {})
         } else if (node.type === NodeType.PROJECT) {
           SettingsManager.setProjectId(node.id)
+          DebugLogger.log('Navigator', `Project selected: ${node.id}`, {})
         }
       }
     })
@@ -52,7 +86,6 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(treeView)
 
-  // Test connection on activation if configured
   if (SettingsManager.isConfigured()) {
     connectionManager.update(ConnectionState.Connecting)
     NavigatorEngine.clearCache()

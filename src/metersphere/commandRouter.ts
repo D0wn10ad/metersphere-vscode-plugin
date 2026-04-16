@@ -5,6 +5,7 @@ import { NavigatorNode } from './models/navigatorNode'
 import { SettingsManager } from './settingsManager'
 import { ConnectionManager, ConnectionState } from './connectionManager'
 import { DebugLogger } from './debugLogger'
+import { SidebarView } from './views/sidebarView'
 
 export class CommandRouter {
   static registerAll(
@@ -169,6 +170,71 @@ export class CommandRouter {
         const newState = !current ? 'ON' : 'OFF'
         DebugLogger.log('Command', `Debug mode toggled: ${newState}`, { enabled: !current })
         vscode.window.showInformationMessage(`Debug mode: ${newState}`)
+      })
+    )
+
+    context.subscriptions.push(
+      vscode.commands.registerCommand('metersphere.showEnvironment', () => {
+        SidebarView.showEnvironment()
+      })
+    )
+
+    context.subscriptions.push(
+      vscode.commands.registerCommand('metersphere.showHistory', () => {
+        SidebarView.showHistory()
+      })
+    )
+
+    context.subscriptions.push(
+      vscode.commands.registerCommand('metersphere.showSettings', () => {
+        SidebarView.showSettings()
+      })
+    )
+
+    context.subscriptions.push(
+      vscode.commands.registerCommand('metersphere.showSync', async () => {
+        await SidebarView.showSync()
+      })
+    )
+
+    context.subscriptions.push(
+      vscode.commands.registerCommand('metersphere.uploadFromEditor', async () => {
+        const editor = vscode.window.activeTextEditor
+        if (!editor) {
+          vscode.window.showInformationMessage('No active editor file')
+          return
+        }
+        const filePath = editor.document.uri.fsPath
+        if (!filePath.endsWith('.java')) {
+          vscode.window.showInformationMessage('Please select a Java file')
+          return
+        }
+        await SidebarView.showSync()
+        SidebarView.sendFilesToSync([filePath])
+      })
+    )
+
+    context.subscriptions.push(
+      vscode.commands.registerCommand('metersphere.uploadFromFileExplorer', async () => {
+        const fileUris = await vscode.window.showOpenDialog({
+          canSelectMany: true,
+          filters: { Java: ['java'] },
+          title: 'Select Java Controller Files',
+        })
+        if (fileUris && fileUris.length > 0) {
+          const filePaths = fileUris.map(u => u.fsPath)
+          await SidebarView.showSync()
+          SidebarView.sendFilesToSync(filePaths)
+        }
+      })
+    )
+
+    context.subscriptions.push(
+      vscode.commands.registerCommand('metersphere.uploadFromNavigator', async (node: NavigatorNode) => {
+        if (node.uri) {
+          await SidebarView.showSync()
+          SidebarView.sendFilesToSync([node.uri.fsPath])
+        }
       })
     )
   }

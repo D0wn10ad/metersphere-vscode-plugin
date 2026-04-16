@@ -54,27 +54,25 @@ export class SyncService {
   }
 
   static apiToPostmanItem(api: ParsedApi): PostmanItem {
-    const hasBody = api.parameters.some(p => p.in === 'body');
-    const hasPathParams = api.parameters.some(p => p.in === 'path');
+    const hasBody = api.parameters?.some(p => p.in === 'body') ?? false;
+    const hasPathParams = api.parameters?.some(p => p.in === 'path') ?? false;
 
-    const urlRaw = api.fullPath;
-
-    const pathParts = urlRaw
-      .split('/')
-      .filter(Boolean)
-      .map(part => part.replace(/^{(.+)}$/, ':$1'));
+    const urlRaw = (api.fullPath as string) || (api.path as string) || '';
+    const pathParts = typeof urlRaw === 'string'
+      ? urlRaw.split('/').filter(Boolean).map(part => part.replace(/^{(.+)}$/, ':$1'))
+      : []
 
     const variables: Array<{ key: string; value: string }> = [];
-    if (hasPathParams) {
-      for (const param of api.parameters.filter(p => p.in === 'path')) {
-        variables.push({ key: param.name, value: '' });
+    if (hasPathParams && api.parameters) {
+      for (const param of (api.parameters as Array<any>).filter(p => p?.in === 'path')) {
+        variables.push({ key: param.name || '', value: '' });
       }
     }
 
     const item: PostmanItem = {
-      name: `${api.method} ${api.path}`,
+      name: `${api.method} ${api.path || 'unknown'}`,
       request: {
-        method: api.method,
+        method: api.method || 'GET',
         header: [],
         url: {
           raw: urlRaw,

@@ -126,7 +126,14 @@ declare module 'vscode' {
     dispose(): void
   }
 
-  export interface Window {
+  export interface WindowExtra {
+    registerWebviewViewProvider(
+      viewId: string,
+      provider: WebviewViewProvider
+    ): Disposable
+  }
+
+export interface Window extends WindowExtra {
     createWebviewPanel(
       id: string,
       title: string,
@@ -143,11 +150,26 @@ declare module 'vscode' {
       items: T[] | Thenable<T[]>,
       options?: QuickPickOptions
     ): Thenable<T | undefined>
+    registerWebviewViewProvider(
+      viewId: string,
+      provider: WebviewViewProvider
+    ): Disposable
+    showOpenDialog(options: {
+      canSelectMany?: boolean
+      filters?: Record<string, string[]>
+      title?: string
+    }): Promise<{ fsPath: string }[]>
+    activeTextEditor: { document: { uri: { fsPath: string } } } | undefined
   }
 
   export interface Workspace {
     readonly rootPath: string | undefined
     getConfiguration(section?: string): Configuration
+    openTextDocument(path: string): Promise<TextDocument>
+  }
+
+  export interface TextDocument {
+    getText(): string
   }
 
   export interface Commands {
@@ -159,4 +181,56 @@ declare module 'vscode' {
   export const workspace: Workspace
   export const window: Window
   export const commands: Commands
+  export const extensions: Extensions
+
+  export class Position {
+    constructor(line: number, character: number)
+    readonly line: number
+    readonly character: number
+  }
+
+  export class Uri {
+    static parse(uri: string): Uri
+    readonly scheme: string
+    readonly authority: string
+    readonly path: string
+    readonly query: string
+    readonly fragment: string
+  }
+
+  export class Hover {
+    constructor(contents: MarkdownString | MarkdownString[])
+    contents: MarkdownString | MarkdownString[]
+  }
+
+  export class MarkdownString {
+    constructor(value?: string)
+    value: string
+  }
+
+  export interface Extension<T = unknown> {
+    id: string
+    packageJSON: unknown
+    extensionPath: string
+  }
+
+  export interface Extensions {
+    all: Extension[]
+  }
+
+  export interface WebviewView {
+    webview: Webview
+    onDidDispose: { (listener: () => void): Disposable }
+  }
+
+  export interface WebviewViewProvider {
+    resolveWebviewView(webviewView: WebviewView): void | Thenable<void>
+  }
+
+  export interface WindowExtra {
+    registerWebviewViewProvider(
+      viewId: string,
+      provider: WebviewViewProvider
+    ): Disposable
+  }
 }
