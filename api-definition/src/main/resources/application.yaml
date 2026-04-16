@@ -1,0 +1,30 @@
+# 服务器核心配置
+server:
+  port: 8080
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
+  # Tomcat 11+ 兼容的URL字符白名单配置（解决中文/特殊字符问题）
+  tomcat:
+    # 允许URL路径中的特殊字符（转义YAML特殊字符）
+    uri-encoding: UTF-8
+    connector:
+      # 允许的路径字符（YAML中特殊字符需用单引号包裹）
+      allowed-chars: '[,],{,},|,`,^,\\,/,?,*,+,=,【,】,，,。,？,！,@,#,$,%,&,（,）'
+      # 关闭严格的URL校验（关键：避免RFC 7230校验报错）
+      strict-http-method-naming: false
+      relaxed-path-chars: '[]{}|`^\/?*+='
+      relaxed-query-chars: '[]{}|`^\/?*+='
+
+# Spring核心配置
+spring:
+  application:
+    name: api-definition
+  main:
+    allow-circular-references: true
+  logging:
+    level:
+      cn.igus.apidefinitioncrud: INFO
+      org.springframework: WARN

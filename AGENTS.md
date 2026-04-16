@@ -164,9 +164,52 @@ After design and planning, choose one:
 | Phase | Status | Notes |
 |-------|--------|-------|
 | Phase 1 MVP1 | ✅ Complete | TokenManager, HttpClient, SettingsManager, WebView scaffold, Jest wired |
-| Phase 2 | 🔴 Not started | Navigator, TreeView, on-demand sync |
-| Phase 3A | 🔴 Not started | Environment, History |
-| Phase 3B | 🔴 Not started | Mocks, Test Data |
-| Phase 3C | 🔴 Not started | Telemetry, Security |
+| Phase 2 | ✅ Complete | Navigator, TreeView, on-demand sync |
+| Phase 3A | ✅ Stub Complete | WebView scaffold, Sync upload (stubs for Environment/History) |
+| Phase 3B | ✅ Complete | Mocks, Test Data |
+| Phase 3C | ✅ Stub Complete | DebugLogger only (telemetry deprecated) |
+| Phase 4 | ✅ Complete | Context menus, Settings enhancements, testConnection, syncCases |
+| Phase 5 | 🔴 Not started | API Debugger & Pull from MeterSphere |
+| Phase 6 | 🔴 Not started | Full Environment WebView + environmentEngine.ts |
+| Phase 7 | 🔴 Not started | Full History WebView + historyEngine.ts |
 
-**SecretStorage** is explicitly out of scope for Phases 1–3. Per-workspace persistence is the default stance.
+NOTE on phases:
+- Phase 3A "Complete" marked as Stub because: getEnvironmentHtml() and getHistoryHtml() are stubs only
+- Phase 3C "Complete" marked as Stub because: telemetryEngine was deprecated, only DebugLogger exists
+- Phase 4 includes: Editor/File Explorer context menus, Settings UI with testConnection, exportName field, syncCases checkbox
+- Phase 6-8 deferred for future implementation
+- dataFile.ts: DEPRECATED (use VSCode workspaceState instead)
+
+**SecretStorage** is explicitly out of scope for Phases 1–8. Per-workspace persistence is the default stance.
+
+---
+
+## 13) Worktree Merge Best Practices
+
+### The Problem
+When merging a worktree branch back to main, files that exist ONLY in the worktree (not in main) can be easily lost if:
+- `--ours` strategy is used for conflict resolution (keeps main's version)
+- The worktree is deleted before verifying all files are merged
+
+### Signs of Data Loss
+- VSIX size drops significantly (e.g., 268KB → 56KB)
+- Missing files in `out/src/metersphere/` (e.g., sidebarView.js, engines)
+- Missing source files in `src/metersphere/`
+
+### Prevention Checklist
+Before merging worktree to main:
+- [ ] Verify ALL dependencies in package.json are present
+- [ ] Check file count in compiled output: `ls out/src/metersphere/ | wc -l`
+- [ ] Compare with last known good build: `unzip -l vsix | grep extension/out`
+- [ ] Run tests to verify functionality
+- [ ] Do NOT delete worktree until merge is verified
+
+### Recovery Steps
+1. Extract VSIX from last known good build: `unzip -o old.vsix -d /tmp/extract`
+2. Copy missing files: `cp /tmp/extract/extension/out/src/metersphere/* out/src/metersphere/`
+3. Re-implement session-specific changes that were lost
+
+### Never Do
+- [ ] Use `git merge --ours` without checking what exists only in worktree
+- [ ] Delete worktree before verifying merge is complete
+- [ ] Assume `node_modules/` is included in git (it's in .gitignore)
