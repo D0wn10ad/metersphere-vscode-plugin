@@ -71,6 +71,7 @@ export class NavigatorTreeDataProvider implements vscode.TreeDataProvider<Naviga
       label: element.name,
       collapsibleState: element.collapsibleState as vscode.TreeItemCollapsibleState,
       tooltip: element.tooltip,
+      contextValue: element.contextValue,
     }
   }
 

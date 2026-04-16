@@ -17,6 +17,7 @@ export interface NavigatorNodeOptions {
   iconPath?: string
   tooltip?: string
   uri?: { fsPath: string }
+  contextValue?: string
 }
 
 export class NavigatorNode {
@@ -27,6 +28,7 @@ export class NavigatorNode {
   public readonly iconPath?: string
   public readonly tooltip?: string
   public readonly uri?: { fsPath: string }
+  public readonly contextValue?: string
   public children: NavigatorNode[] = []
   public collapsibleState: number = 0
 
@@ -38,6 +40,7 @@ export class NavigatorNode {
     this.iconPath = options.iconPath
     this.tooltip = options.tooltip
     this.uri = options.uri
+    this.contextValue = options.contextValue ?? options.type
     if (options.type === NodeType.FOLDER || options.type === NodeType.PROJECT || options.type === NodeType.WORKSPACE) {
       this.collapsibleState = 2 // Expanded
     }

@@ -83,6 +83,12 @@ export class SidebarView {
     }
   }
 
+  static postMessage(command: string, data?: Record<string, unknown>): void {
+    if (SidebarView.panel) {
+      SidebarView.panel.webview.postMessage({ command, data })
+    }
+  }
+
   private static show(viewId: string, title: string, html: string): void {
     if (SidebarView.panel && SidebarView.panel.viewType !== `metersphere.${viewId}`) {
       SidebarView.panel.dispose()

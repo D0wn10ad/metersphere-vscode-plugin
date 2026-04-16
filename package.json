@@ -187,8 +187,13 @@
       "view/item/context": [
         {
           "command": "metersphere.uploadFromNavigator",
-          "when": "view == metersphere.navigator",
+          "when": "view == metersphere.navigator && viewItem == project",
           "group": "meterSphere@1"
+        },
+        {
+          "command": "metersphere.uploadFromNavigator",
+          "when": "view == metersphere.navigator && viewItem == project",
+          "group": "inline@1"
         }
       ]
     }

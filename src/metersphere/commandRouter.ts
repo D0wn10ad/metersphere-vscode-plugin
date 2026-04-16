@@ -1,11 +1,12 @@
 import * as vscode from 'vscode'
 import { NavigatorTreeDataProvider } from './navigatorTreeProvider'
 import { NavigatorEngine } from './navigatorEngine'
-import { NavigatorNode } from './models/navigatorNode'
+import { NavigatorNode, NodeType } from './models/navigatorNode'
 import { SettingsManager } from './settingsManager'
 import { ConnectionManager, ConnectionState } from './connectionManager'
 import { DebugLogger } from './debugLogger'
 import { SidebarView } from './views/sidebarView'
+import { JavaFileScanner } from './javaFileScanner'
 
 export class CommandRouter {
   static registerAll(
@@ -231,10 +232,42 @@ export class CommandRouter {
 
     context.subscriptions.push(
       vscode.commands.registerCommand('metersphere.uploadFromNavigator', async (node: NavigatorNode) => {
-        if (node.uri) {
-          await SidebarView.showSync()
-          SidebarView.sendFilesToSync([node.uri.fsPath])
+        if (!node.uri) {
+          return
         }
+
+        const projectPath = node.uri.fsPath
+        let filesToUpload: string[] = []
+
+        if (node.type === NodeType.PROJECT) {
+          SidebarView.postMessage('uploadProgress', { message: `Scanning project: ${node.name}...` })
+
+          const projectRoot = await JavaFileScanner.findProjectRoot(projectPath)
+          if (!projectRoot) {
+            SidebarView.postMessage('uploadError', { message: 'Could not find project root (no pom.xml or build.gradle found)' })
+            return
+          }
+
+          const searchPaths = JavaFileScanner.getCommonProjectPaths(projectRoot)
+          for (const searchPath of searchPaths) {
+            const foundFiles = await JavaFileScanner.findJavaFilesInProject(searchPath, (msg: string, count: number) => {
+              SidebarView.postMessage('uploadProgress', { message: `${msg} (${count} files)` })
+            })
+            filesToUpload.push(...foundFiles)
+          }
+
+          filesToUpload = [...new Set(filesToUpload)]
+        } else {
+          filesToUpload = [projectPath]
+        }
+
+        if (filesToUpload.length === 0) {
+          SidebarView.postMessage('uploadError', { message: 'No @RestController or @Controller classes found in project' })
+          return
+        }
+
+        await SidebarView.showSync()
+        SidebarView.sendFilesToSync(filesToUpload)
       })
     )
   }
