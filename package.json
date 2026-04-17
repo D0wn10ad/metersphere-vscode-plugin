@@ -122,22 +122,22 @@
       },
       {
         "command": "metersphere.showEnvironment",
-        "title": "Show Environment",
+        "title": "MeterSphere: Show Environment",
         "icon": "$(globe)"
       },
       {
         "command": "metersphere.showHistory",
-        "title": "Show History",
+        "title": "MeterSphere: Show History",
         "icon": "$(history)"
       },
       {
         "command": "metersphere.showSettings",
-        "title": "Show Settings",
+        "title": "MeterSphere: Show Settings",
         "icon": "$(settings)"
       },
       {
         "command": "metersphere.showSync",
-        "title": "Show Sync",
+        "title": "MeterSphere: Show Sync",
         "icon": "$(sync)"
       },
       {
