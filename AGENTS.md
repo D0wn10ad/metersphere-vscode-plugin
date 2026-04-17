@@ -168,15 +168,14 @@ After design and planning, choose one:
 | Phase 3A | ✅ Stub Complete | WebView scaffold, Sync upload (stubs for Environment/History) |
 | Phase 3B | ✅ Complete | Mocks, Test Data |
 | Phase 3C | ✅ Stub Complete | DebugLogger only (telemetry deprecated) |
-| Phase 4 | ✅ Complete | Context menus, Settings enhancements, testConnection, syncCases |
-| Phase 5 | 🔴 Not started | API Debugger & Pull from MeterSphere |
-| Phase 6 | 🔴 Not started | Full Environment WebView + environmentEngine.ts |
-| Phase 7 | 🔴 Not started | Full History WebView + historyEngine.ts |
+| Phase 4 | ✅ Complete | Context menus, Settings enhancements, testConnection, syncCases, Responsive Sync |
+| Phase 4 Enhancement | ✅ Complete | FilesExplorer inline button, scan scope dialog, scanning state UI, parallel module selection |
 
 NOTE on phases:
 - Phase 3A "Complete" marked as Stub because: getEnvironmentHtml() and getHistoryHtml() are stubs only
 - Phase 3C "Complete" marked as Stub because: telemetryEngine was deprecated, only DebugLogger exists
 - Phase 4 includes: Editor/File Explorer context menus, Settings UI with testConnection, exportName field, syncCases checkbox
+- Phase 4 Enhancement includes: Inline sync button, right-click sync improvements, responsive scanning UI
 - Phase 6-8 deferred for future implementation
 - dataFile.ts: DEPRECATED (use VSCode workspaceState instead)
 
