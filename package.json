@@ -156,7 +156,7 @@
           "group": "meterSphere@1"
         }
       ],
-      "filesExplorer/context": [
+      "explorer/context": [
         {
           "command": "metersphere.uploadFromFileExplorer",
           "group": "meterSphere@1"
@@ -195,7 +195,7 @@
           "group": "meterSphere@1"
         }
       ],
-      "filesExplorer/null": [
+      "explorer/null": [
         {
           "command": "metersphere.syncFolder",
           "when": "resourceExtname == .java",
