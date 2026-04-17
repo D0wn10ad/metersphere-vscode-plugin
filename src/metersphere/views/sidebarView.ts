@@ -513,10 +513,28 @@ export class SidebarView {
     <label style="margin:0;font-weight:normal">Sync Test Cases</label>
   </div>
   <div id="status"></div>
-  <button class="btn-primary" onclick="upload()">Upload to MeterSphere</button>
+  <button class="btn-primary" id="uploadBtn" onclick="upload()">Upload to MeterSphere</button>
   <script>
     const vscode = acquireVsCodeApi();
     let selectedFiles = [];
+    let isScanning = false;
+    let uploadEnabled = false;
+
+    function setUploadEnabled(enabled) {
+      uploadEnabled = enabled;
+      const btn = document.getElementById('uploadBtn');
+      if (enabled) {
+        btn.disabled = false;
+        btn.textContent = 'Upload to MeterSphere';
+        btn.className = 'btn-primary';
+      } else {
+        btn.disabled = true;
+        btn.textContent = isScanning ? 'Scanning...' : 'Upload to MeterSphere';
+        btn.className = 'btn-primary';
+        btn.style.opacity = '0.6';
+      }
+    }
+
     function selectFiles() { vscode.postMessage({ command: 'selectJavaFiles' }); }
     function openExt(extId) { vscode.postMessage({ command: 'openExtension', data: extId }); }
     window.addEventListener('message', function(event) {
@@ -527,6 +545,34 @@ export class SidebarView {
         fileList.innerHTML = selectedFiles.length === 0 
           ? '<div style="color:#666;font-style:italic">No files selected</div>'
           : selectedFiles.map(f => '<div class="file-list-item">' + f.split('/').pop() + '</div>').join('');
+        if (selectedFiles.length > 0) uploadEnabled = true;
+        setUploadEnabled(uploadEnabled);
+      } else if (data.command === 'scanningStarted') {
+        isScanning = true;
+        selectedFiles = [];
+        uploadEnabled = false;
+        const fileList = document.getElementById('fileList');
+        fileList.innerHTML = '<div style="color:#666;font-style:italic">Scanning...</div>';
+        showStatus(data.data?.message || 'Scanning...', 'loading');
+        setUploadEnabled(false);
+      } else if (data.command === 'scanComplete') {
+        isScanning = false;
+        if (data.data?.error) {
+          showStatus('Error: ' + (data.data?.error || 'Unknown'), 'error');
+          selectedFiles = [];
+          uploadEnabled = false;
+          const fileList = document.getElementById('fileList');
+          fileList.innerHTML = '<div style="color:#666;font-style:italic">No files selected</div>';
+        } else {
+          selectedFiles = data.data?.files || [];
+          showStatus('Found ' + selectedFiles.length + ' Java files', 'success');
+          const fileList = document.getElementById('fileList');
+          fileList.innerHTML = selectedFiles.length === 0 
+            ? '<div style="color:#666;font-style:italic">No files selected</div>'
+            : selectedFiles.map(f => '<div class="file-list-item">' + f.split('/').pop() + '</div>').join('');
+          uploadEnabled = selectedFiles.length > 0;
+        }
+        setUploadEnabled(uploadEnabled);
       } else if (data.command === 'projectLoaded') {
         document.getElementById('currentProject').textContent = data.name;
         const select = document.getElementById('moduleSelect');
@@ -546,6 +592,7 @@ export class SidebarView {
       document.getElementById('status').innerHTML = '<div class="status ' + type + '">' + message + '</div>';
     }
     function upload() {
+      if (!uploadEnabled) return;
       const moduleId = document.getElementById('moduleSelect').value;
       if (!moduleId) { showStatus('Please select a module', 'error'); return; }
       if (selectedFiles.length === 0) { showStatus('Please select at least one Java file', 'error'); return; }

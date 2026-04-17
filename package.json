@@ -117,6 +117,10 @@
         "title": "MeterSphere: Upload to MeterSphere"
       },
       {
+        "command": "metersphere.syncFolder",
+        "title": "MeterSphere: Sync Folder"
+      },
+      {
         "command": "metersphere.showEnvironment",
         "title": "Show Environment",
         "icon": "$(globe)"
@@ -189,10 +193,12 @@
           "command": "metersphere.uploadFromNavigator",
           "when": "view == metersphere.navigator && viewItem == project",
           "group": "meterSphere@1"
-        },
+        }
+      ],
+      "filesExplorer/null": [
         {
-          "command": "metersphere.uploadFromNavigator",
-          "when": "view == metersphere.navigator && viewItem == project",
+          "command": "metersphere.syncFolder",
+          "when": "resourceExtname == .java",
           "group": "inline@1"
         }
       ]

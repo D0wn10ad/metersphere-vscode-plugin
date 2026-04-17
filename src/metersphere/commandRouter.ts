@@ -1,4 +1,5 @@
 import * as vscode from 'vscode'
+import * as path from 'path'
 import { NavigatorTreeDataProvider } from './navigatorTreeProvider'
 import { NavigatorEngine } from './navigatorEngine'
 import { NavigatorNode, NodeType } from './models/navigatorNode'
@@ -236,15 +237,16 @@ export class CommandRouter {
           return
         }
 
+        await SidebarView.showSync()
+        SidebarView.postMessage('scanningStarted', { message: `Scanning: ${node.name}...` })
+
         const projectPath = node.uri.fsPath
         let filesToUpload: string[] = []
 
         if (node.type === NodeType.PROJECT) {
-          SidebarView.postMessage('uploadProgress', { message: `Scanning project: ${node.name}...` })
-
           const projectRoot = await JavaFileScanner.findProjectRoot(projectPath)
           if (!projectRoot) {
-            SidebarView.postMessage('uploadError', { message: 'Could not find project root (no pom.xml or build.gradle found)' })
+            SidebarView.postMessage('scanComplete', { files: [], error: 'Could not find project root (no pom.xml or build.gradle found)' })
             return
           }
 
@@ -262,12 +264,69 @@ export class CommandRouter {
         }
 
         if (filesToUpload.length === 0) {
-          SidebarView.postMessage('uploadError', { message: 'No @RestController or @Controller classes found in project' })
+          SidebarView.postMessage('scanComplete', { files: [], error: 'No @RestController or @Controller classes found' })
           return
         }
 
+        SidebarView.postMessage('scanComplete', { files: filesToUpload })
+      })
+    )
+
+    context.subscriptions.push(
+      vscode.commands.registerCommand('metersphere.syncFolder', async (uri: vscode.Uri) => {
         await SidebarView.showSync()
-        SidebarView.sendFilesToSync(filesToUpload)
+        SidebarView.postMessage('scanningStarted', { message: 'Ready. Choose scan scope...' })
+
+        const filePath = (uri as any).fsPath || uri.path
+        const isFile = filePath.endsWith('.java')
+        let filesToUpload: string[] = []
+        let scanPath = filePath
+
+        if (isFile) {
+          const selected = await vscode.window.showQuickPick(
+            [
+              { label: 'This file', description: 'Sync only this Java file', value: 'file' },
+              { label: 'Parent folder', description: 'Scan parent folder recursively', value: 'folder' },
+            ],
+            { placeHolder: 'Choose scan scope' }
+          )
+
+          if (!selected) {
+            SidebarView.postMessage('scanComplete', { files: [], error: 'Scan cancelled' })
+            return
+          }
+
+          if (selected.value === 'file') {
+            filesToUpload = [filePath]
+          } else {
+            scanPath = path.dirname(filePath)
+          }
+        }
+
+        if (filesToUpload.length === 0) {
+          const projectRoot = await JavaFileScanner.findProjectRoot(scanPath)
+          if (!projectRoot) {
+            SidebarView.postMessage('scanComplete', { files: [], error: 'Could not find project root' })
+            return
+          }
+
+          const searchPaths = JavaFileScanner.getCommonProjectPaths(projectRoot)
+          for (const searchPath of searchPaths) {
+            const foundFiles = await JavaFileScanner.findJavaFilesInProject(searchPath, (msg: string, count: number) => {
+              SidebarView.postMessage('uploadProgress', { message: `${msg} (${count} files)` })
+            })
+            filesToUpload.push(...foundFiles)
+          }
+
+          filesToUpload = [...new Set(filesToUpload)]
+        }
+
+        if (filesToUpload.length === 0) {
+          SidebarView.postMessage('scanComplete', { files: [], error: 'No @RestController found' })
+          return
+        }
+
+        SidebarView.postMessage('scanComplete', { files: filesToUpload })
       })
     )
   }
