@@ -217,17 +217,68 @@ export class CommandRouter {
     )
 
     context.subscriptions.push(
-      vscode.commands.registerCommand('metersphere.uploadFromFileExplorer', async () => {
-        const fileUris = await vscode.window.showOpenDialog({
-          canSelectMany: true,
-          filters: { Java: ['java'] },
-          title: 'Select Java Controller Files',
-        })
-        if (fileUris && fileUris.length > 0) {
-          const filePaths = fileUris.map(u => u.fsPath)
-          await SidebarView.showSync()
-          SidebarView.sendFilesToSync(filePaths)
+      vscode.commands.registerCommand('metersphere.uploadFromFileExplorer', async (...args: unknown[]) => {
+        let uris: vscode.Uri[] = []
+        
+        if (args.length > 0 && args[0] instanceof vscode.Uri) {
+          uris = args as vscode.Uri[]
+        } else if (args.length > 0 && Array.isArray(args[0])) {
+          const firstArg = args[0]
+          if (firstArg.length > 0 && firstArg[0] instanceof vscode.Uri) {
+            uris = firstArg as vscode.Uri[]
+          }
         }
+        
+        await SidebarView.showSync()
+        
+        if (uris.length === 0) {
+          SidebarView.postMessage('scanComplete', { files: [], error: 'No files selected' })
+          return
+        }
+
+        SidebarView.postMessage('scanningStarted', { message: 'Scanning...' })
+
+        const filePaths = uris.map(u => (u as any).fsPath || u.path)
+        const isFile = filePaths[0].endsWith('.java')
+        let filesToUpload: string[] = []
+
+        if (isFile && filePaths.length > 1) {
+          filesToUpload = filePaths
+        } else if (isFile) {
+          const projectRoot = await JavaFileScanner.findProjectRoot(filePaths[0])
+          if (projectRoot) {
+            const searchPaths = JavaFileScanner.getCommonProjectPaths(projectRoot)
+            for (const searchPath of searchPaths) {
+              const found = await JavaFileScanner.findJavaFilesInProject(searchPath, (msg: string, count: number) => {
+                SidebarView.postMessage('uploadProgress', { message: `${msg} (${count})` })
+              })
+              filesToUpload.push(...found)
+            }
+            filesToUpload = [...new Set(filesToUpload)]
+          }
+        } else {
+          const scanPath = filePaths[0]
+          const projectRoot = await JavaFileScanner.findProjectRoot(scanPath)
+          if (!projectRoot) {
+            SidebarView.postMessage('scanComplete', { files: [], error: 'Could not find project root' })
+            return
+          }
+          const searchPaths = JavaFileScanner.getCommonProjectPaths(projectRoot)
+          for (const searchPath of searchPaths) {
+            const found = await JavaFileScanner.findJavaFilesInProject(searchPath, (msg: string, count: number) => {
+              SidebarView.postMessage('uploadProgress', { message: `${msg} (${count})` })
+            })
+            filesToUpload.push(...found)
+          }
+          filesToUpload = [...new Set(filesToUpload)]
+        }
+
+        if (filesToUpload.length === 0) {
+          SidebarView.postMessage('scanComplete', { files: [], error: 'No @RestController found' })
+          return
+        }
+
+        SidebarView.postMessage('scanComplete', { files: filesToUpload })
       })
     )
 
