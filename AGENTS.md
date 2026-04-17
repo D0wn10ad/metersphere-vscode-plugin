@@ -184,6 +184,45 @@ NOTE on phases:
 
 ---
 
+## 9) Sync Operations
+
+This extension supports multiple ways to sync Java Spring Controllers to MeterSphere:
+
+### Supported Actions
+
+| Action | Trigger | Behavior |
+|--------|---------|----------|
+| **Right-click single `.java` file** | FilesExplorer context menu | Scans that file only, opens Sync WebView |
+| **Right-click multiple `.java` files** | FilesExplorer context menu | Scans all selected files, opens Sync WebView |
+| **Right-click folder** | FilesExplorer context menu | Scans folder recursively for `@RestController`/`@Controller` files, opens Sync WebView |
+| **Click inline button on `.java` file** | FilesExplorer hover | Shows dialog: "This file" vs "Parent folder" |
+| **Right-click Navigator project** | MeterSphere Navigator | Scans project recursively, opens Sync WebView |
+| **Select files manually** | Sync WebView "Select Java Files" button | Opens file picker |
+
+### Sync Flow
+
+```
+1. User triggers sync (any action above)
+2. Sync WebView opens immediately with "Scanning..." state
+3. Module/project dropdowns are ENABLED for selection during scan
+4. Upload button shows "Scanning..." and is DISABLED
+5. Background scan runs (discovers @RestController classes)
+6. Scan completes:
+   - Files found: Upload button ENABLED, files shown in list
+   - No files: Error message shown, Upload button remains DISABLED
+7. User configures:
+   - Selects module from dropdown
+   - Optionally: Import mode, Context Path, Export Name, Sync Test Cases
+8. User clicks "Upload to MeterSphere"
+```
+
+### Navigator vs Explorer
+
+- **MeterSphere Navigator TreeView**: Use for browsing and selecting MeterSphere projects/modules
+- **VSCode FilesExplorer**: Use for syncing Java files - both right-click and inline button available
+
+---
+
 ## 13) Worktree Merge Best Practices
 
 ### The Problem
