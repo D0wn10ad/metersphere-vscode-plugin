@@ -12,7 +12,7 @@
   ],
   "activationEvents": [
     "*",
-    "onCommand:metersphere.openDebugger",
+    "onCommand:metersphere.showDebugger",
     "onCommand:metersphere.refreshNavigator",
     "onCommand:metersphere.openNavigator",
     "onCommand:metersphere.prefillFromNode",
@@ -164,34 +164,34 @@
       ],
       "view/title": [
         {
-          "command": "metersphere.showEnvironment",
+          "command": "metersphere.showDebugger",
           "when": "view == metersphere.navigator",
           "group": "navigation@1",
+          "icon": "$(debug)"
+        },
+        {
+          "command": "metersphere.showEnvironment",
+          "when": "view == metersphere.navigator",
+          "group": "navigation@2",
           "icon": "$(globe)"
         },
         {
           "command": "metersphere.showHistory",
           "when": "view == metersphere.navigator",
-          "group": "navigation@2",
+          "group": "navigation@3",
           "icon": "$(history)"
         },
         {
           "command": "metersphere.showSync",
           "when": "view == metersphere.navigator",
-          "group": "navigation@3",
+          "group": "navigation@4",
           "icon": "$(sync)"
         },
         {
           "command": "metersphere.showSettings",
           "when": "view == metersphere.navigator",
-          "group": "navigation@4",
-          "icon": "$(settings)"
-        },
-        {
-          "command": "metersphere.showDebugger",
-          "when": "view == metersphere.navigator",
           "group": "navigation@5",
-          "icon": "$(debug)"
+          "icon": "$(settings)"
         }
       ],
       "view/item/context": [
