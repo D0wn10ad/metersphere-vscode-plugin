@@ -77,10 +77,6 @@
     },
     "commands": [
       {
-        "command": "metersphere.openDebugger",
-        "title": "MeterSphere: Open Debugger"
-      },
-      {
         "command": "metersphere.showDebugger",
         "title": "MeterSphere: Show Debugger"
       },
@@ -190,6 +186,12 @@
           "when": "view == metersphere.navigator",
           "group": "navigation@4",
           "icon": "$(settings)"
+        },
+        {
+          "command": "metersphere.showDebugger",
+          "when": "view == metersphere.navigator",
+          "group": "navigation@5",
+          "icon": "$(debug)"
         }
       ],
       "view/item/context": [
