@@ -7,6 +7,7 @@ import { SettingsManager } from './settingsManager'
 import { ConnectionManager, ConnectionState } from './connectionManager'
 import { DebugLogger } from './debugLogger'
 import { SidebarView } from './views/sidebarView'
+import { WebViewController } from './webviewController'
 import { JavaFileScanner } from './javaFileScanner'
 
 export class CommandRouter {
@@ -184,6 +185,12 @@ export class CommandRouter {
     context.subscriptions.push(
       vscode.commands.registerCommand('metersphere.showHistory', () => {
         SidebarView.showHistory()
+      })
+    )
+
+    context.subscriptions.push(
+      vscode.commands.registerCommand('metersphere.showDebugger', () => {
+        new WebViewController(context).open()
       })
     )
 

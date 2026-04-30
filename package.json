@@ -81,6 +81,10 @@
         "title": "MeterSphere: Open Debugger"
       },
       {
+        "command": "metersphere.showDebugger",
+        "title": "MeterSphere: Show Debugger"
+      },
+      {
         "command": "metersphere.refreshNavigator",
         "title": "MeterSphere: Refresh Navigator"
       },

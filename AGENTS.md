@@ -170,12 +170,14 @@ After design and planning, choose one:
 | Phase 3C | ✅ Stub Complete | DebugLogger only (telemetry deprecated) |
 | Phase 4 | ✅ Complete | Context menus, Settings enhancements, testConnection, syncCases, Responsive Sync |
 | Phase 4 Enhancement | ✅ Complete | FilesExplorer inline button, scan scope dialog, scanning state UI, parallel module selection |
+| Phase 5 | 🔴 Not started | API Debugger (1:1 with IDEA plugin) |
 
 NOTE on phases:
 - Phase 3A "Complete" marked as Stub because: getEnvironmentHtml() and getHistoryHtml() are stubs only
 - Phase 3C "Complete" marked as Stub because: telemetryEngine was deprecated, only DebugLogger exists
 - Phase 4 includes: Editor/File Explorer context menus, Settings UI with testConnection, exportName field, syncCases checkbox
 - Phase 4 Enhancement includes: Inline sync button, right-click sync improvements, responsive scanning UI
+- **Phase 5: API Debugger ONLY (1:1 with IDEA plugin) - Pull from MeterSphere REMOVED from Phase 5**
 - Phase 6-8 deferred for future implementation
 - dataFile.ts: DEPRECATED (use VSCode workspaceState instead)
 
