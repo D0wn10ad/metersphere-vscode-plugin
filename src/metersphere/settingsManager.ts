@@ -8,6 +8,7 @@ export class SettingsManager {
   static WORKSPACE_KEY = 'metersphere.workspaceId'
   static PROJECT_KEY = 'metersphere.projectId'
   static SYNC_KEY = 'metersphere.syncEnabled'
+  static DEBUG_KEY = 'metersphere.debugEnabled'
   static MS_URL_KEY = 'metersphere.msUrl'
 
   static getMsUrl(): string | undefined {
@@ -57,6 +58,15 @@ export class SettingsManager {
 
   static setSyncEnabled(enabled: boolean): void {
     vscode.workspace.getConfiguration().update(SettingsManager.SYNC_KEY, enabled, vscode.ConfigurationTarget.Global)
+  }
+
+  static isDebugEnabled(): boolean {
+    const v = vscode.workspace.getConfiguration().get<boolean>(SettingsManager.DEBUG_KEY)
+    return v ?? false
+  }
+
+  static setDebugEnabled(enabled: boolean): void {
+    vscode.workspace.getConfiguration().update(SettingsManager.DEBUG_KEY, enabled, vscode.ConfigurationTarget.Global)
   }
 
   static isConfigured(): boolean {

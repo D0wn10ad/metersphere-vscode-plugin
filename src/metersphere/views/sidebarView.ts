@@ -117,6 +117,7 @@ export class SidebarView {
         SettingsManager.setMsUrl(message.data.msUrl)
         SettingsManager.setAccessKey(message.data.accessKey)
         SettingsManager.setSecretKey(message.data.secretKey)
+        SettingsManager.setDebugEnabled(message.data.debugEnabled ?? false)
         vscode.window.showInformationMessage('Settings saved!')
         break
 
@@ -407,6 +408,7 @@ export class SidebarView {
     const msUrl = SettingsManager.getMsUrl() ?? ''
     const accessKey = SettingsManager.getAccessKey() ?? ''
     const secretKey = SettingsManager.getSecretKey() ?? ''
+    const debugEnabled = SettingsManager.isDebugEnabled() ? 'checked' : ''
 
     return `<!DOCTYPE html>
 <html>
@@ -421,6 +423,8 @@ export class SidebarView {
     button { padding: 8px 16px; cursor: pointer; border: none; border-radius: 4px; font-weight: 500; }
     .btn-primary { background: #007acc; color: white; margin-right: 8px; }
     .btn-secondary { background: #6c757d; color: white; }
+    .checkbox-label { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+    .checkbox-label input { width: auto; margin: 0; }
   </style>
 </head>
 <body>
@@ -438,6 +442,10 @@ export class SidebarView {
       <label>Secret Key</label>
       <input type="password" id="secretKey" value="${secretKey}">
     </div>
+    <div class="checkbox-label">
+      <input type="checkbox" id="debugEnabled" ${debugEnabled}>
+      <label style="margin: 0; font-weight: normal;">Enable Debug Logging</label>
+    </div>
     <button type="button" class="btn-secondary" onclick="testConnection()">Test Connection</button>
     <button type="submit" class="btn-primary">Save Settings</button>
   </form>
@@ -445,7 +453,12 @@ export class SidebarView {
     const vscode = acquireVsCodeApi();
     function save(event) {
       event.preventDefault();
-      vscode.postMessage({ command: 'saveSettings', data: { msUrl: document.getElementById('msUrl').value, accessKey: document.getElementById('accessKey').value, secretKey: document.getElementById('secretKey').value }});
+      vscode.postMessage({ command: 'saveSettings', data: {
+        msUrl: document.getElementById('msUrl').value,
+        accessKey: document.getElementById('accessKey').value,
+        secretKey: document.getElementById('secretKey').value,
+        debugEnabled: document.getElementById('debugEnabled').checked
+      }});
     }
     function testConnection() {
       vscode.postMessage({ command: 'testConnection' });
