@@ -103,7 +103,8 @@
       },
       {
         "command": "metersphere.refreshNavigator",
-        "title": "MeterSphere: Refresh Navigator"
+        "title": "MeterSphere: Refresh Navigator",
+        "icon": "$(refresh)"
       },
       {
         "command": "metersphere.openNavigator",
@@ -184,6 +185,12 @@
         }
       ],
       "view/title": [
+        {
+          "command": "metersphere.refreshNavigator",
+          "when": "view == metersphere.navigator",
+          "group": "navigation@0",
+          "icon": "$(refresh)"
+        },
         {
           "command": "metersphere.showDebugger",
           "when": "view == metersphere.navigator",
