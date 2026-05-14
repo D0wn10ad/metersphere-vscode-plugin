@@ -192,26 +192,26 @@
         },
         {
           "command": "metersphere.showEnvironment",
-          "when": "view == metersphere.navigator",
-          "group": "navigation@2",
+          "when": "view == metersphere.environment",
+          "group": "navigation@1",
           "icon": "$(globe)"
         },
         {
           "command": "metersphere.showHistory",
-          "when": "view == metersphere.navigator",
-          "group": "navigation@3",
+          "when": "view == metersphere.history",
+          "group": "navigation@1",
           "icon": "$(history)"
         },
         {
           "command": "metersphere.showSync",
-          "when": "view == metersphere.navigator",
-          "group": "navigation@4",
+          "when": "view == metersphere.sync",
+          "group": "navigation@1",
           "icon": "$(sync)"
         },
         {
           "command": "metersphere.showSettings",
-          "when": "view == metersphere.navigator",
-          "group": "navigation@5",
+          "when": "view == metersphere.settings",
+          "group": "navigation@1",
           "icon": "$(settings)"
         }
       ],

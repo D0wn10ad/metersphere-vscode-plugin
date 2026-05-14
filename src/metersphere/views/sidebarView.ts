@@ -31,29 +31,29 @@ export class SidebarView {
 
   static async showSync(): Promise<void> {
     await vscode.commands.executeCommand('metersphere.sync.focus')
-
-    const msUrl = SettingsManager.getMsUrl()
-    const accessKey = SettingsManager.getAccessKey()
-    const secretKey = SettingsManager.getSecretKey()
-    if (!msUrl || !accessKey || !secretKey) {
-      return
-    }
-    await SidebarView.loadProjectModules()
   }
 
   static async loadProjectModules(): Promise<void> {
     const msUrl = SettingsManager.getMsUrl()
     const accessKey = SettingsManager.getAccessKey()
     const secretKey = SettingsManager.getSecretKey()
-    if (!msUrl || !accessKey || !secretKey) return
+    if (!msUrl || !accessKey || !secretKey) {
+      SidebarView.postMessage({ command: 'loadProjectError', data: { message: 'MeterSphere not configured. Go to Settings to set up your connection.' } })
+      return
+    }
 
     try {
       const headers = SettingsManager.buildAuthHeaders('application/json')
       const workspaceId = SettingsManager.getWorkspaceId()
       const projectId = SettingsManager.getProjectId()
-      
+
+      if (!workspaceId) {
+        SidebarView.postMessage({ command: 'loadProjectError', data: { message: 'No workspace selected. Use Navigator to select a workspace.' } })
+        return
+      }
+
       DebugLogger.log('Sync', 'Starting module load', {
-        workspaceId: workspaceId ?? 'none',
+        workspaceId,
         projectId: projectId ?? 'none'
       })
 
@@ -62,33 +62,48 @@ export class SidebarView {
         headers,
         body: JSON.stringify({ workspaceIds: [workspaceId] })
       })
-      const rawJson = await projectsResp.json()
-      const projects = rawJson.success && rawJson.data ? rawJson.data : []
-
-      if (projects.length > 0) {
-        const savedProjectId = SettingsManager.getProjectId()
-        let targetProject = projects[0]
-        if (savedProjectId) {
-          const found = projects.find((p: any) => p.id === savedProjectId)
-          if (found) targetProject = found
-        }
-
-        const modulesResp = await fetch(`${msUrl}/api/api/module/list/${targetProject.id}/HTTP`, { headers })
-        const modulesData = await modulesResp.json()
-        const modules = modulesData.data || []
-        const fullModules = modules.map((m: any) => ({
-          id: `${targetProject.id}:${m.id}`,
-          name: m.name,
-        }))
-
-        SidebarView.postMessage({
-          command: 'projectLoaded',
-          name: targetProject.name,
-          data: { modules: fullModules }
-        })
+      if (!projectsResp.ok) {
+        SidebarView.postMessage({ command: 'loadProjectError', data: { message: `Failed to load projects: HTTP ${projectsResp.status}` } })
+        return
       }
+      const rawJson = await projectsResp.json()
+      if (!rawJson.success) {
+        SidebarView.postMessage({ command: 'loadProjectError', data: { message: rawJson.message || 'Failed to load projects from server' } })
+        return
+      }
+      const projects = rawJson.data || []
+      if (projects.length === 0) {
+        SidebarView.postMessage({ command: 'loadProjectError', data: { message: 'No projects found in this workspace.' } })
+        return
+      }
+
+      const savedProjectId = SettingsManager.getProjectId()
+      let targetProject = projects[0]
+      if (savedProjectId) {
+        const found = projects.find((p: any) => p.id === savedProjectId)
+        if (found) targetProject = found
+      }
+
+      const modulesResp = await fetch(`${msUrl}/api/api/module/list/${targetProject.id}/HTTP`, { headers })
+      if (!modulesResp.ok) {
+        SidebarView.postMessage({ command: 'loadProjectError', data: { message: `Failed to load modules: HTTP ${modulesResp.status}` } })
+        return
+      }
+      const modulesData = await modulesResp.json()
+      const modules = modulesData.data || []
+      const fullModules = modules.map((m: any) => ({
+        id: `${targetProject.id}:${m.id}`,
+        name: m.name,
+      }))
+
+      SidebarView.postMessage({
+        command: 'projectLoaded',
+        name: targetProject.name,
+        data: { modules: fullModules }
+      })
     } catch (error) {
       DebugLogger.error('Sync', 'Failed to load modules', error)
+      SidebarView.postMessage({ command: 'loadProjectError', data: { message: error instanceof Error ? error.message : String(error) } })
     }
   }
 
@@ -895,6 +910,9 @@ export class SidebarView {
         const select = document.getElementById('moduleSelect');
         select.innerHTML = '<option value="">Select module...</option>' +
           (data.data?.modules || []).map(m => '<option value="' + m.id + '">' + m.name + '</option>').join('');
+      } else if (data.command === 'loadProjectError') {
+        document.getElementById('currentProject').textContent = 'Error';
+        showStatus(data.data?.message || 'Failed to load project data', 'error');
       } else if (data.command === 'javaExtMissing') {
         document.getElementById('javaExtWarning').style.display = 'block';
       } else if (data.command === 'uploadProgress') {
