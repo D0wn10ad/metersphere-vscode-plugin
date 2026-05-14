@@ -37,6 +37,26 @@
           "id": "metersphere.navigator",
           "name": "Navigator",
           "type": "tree"
+        },
+        {
+          "id": "metersphere.sync",
+          "name": "Sync",
+          "type": "webview"
+        },
+        {
+          "id": "metersphere.settings",
+          "name": "Settings",
+          "type": "webview"
+        },
+        {
+          "id": "metersphere.environment",
+          "name": "Environment",
+          "type": "webview"
+        },
+        {
+          "id": "metersphere.history",
+          "name": "History",
+          "type": "webview"
         }
       ]
     },

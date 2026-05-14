@@ -4,31 +4,49 @@ import { JavaParser } from '../javaParser'
 import { SyncService } from '../syncService'
 import FormData from 'form-data'
 import { DebugLogger } from '../debugLogger'
+import { ContextHolder } from '../contextHolder'
 
 export class SidebarView {
-  private static panel: vscode.WebviewPanel | undefined = undefined
+  private static views: Record<string, vscode.WebviewView> = {}
+
+  static registerView(id: string, view: vscode.WebviewView): void {
+    SidebarView.views[id] = view
+  }
+
+  static unregisterView(id: string): void {
+    delete SidebarView.views[id]
+  }
 
   static showEnvironment(): void {
-    SidebarView.show('environment', 'MeterSphere - Environment', SidebarView.getEnvironmentHtml())
+    vscode.commands.executeCommand('metersphere.environment.focus')
   }
 
   static showHistory(): void {
-    SidebarView.show('history', 'MeterSphere - History', SidebarView.getHistoryHtml())
+    vscode.commands.executeCommand('metersphere.history.focus')
   }
 
   static showSettings(): void {
-    SidebarView.show('settings', 'MeterSphere - Settings', SidebarView.getSettingsHtml())
+    vscode.commands.executeCommand('metersphere.settings.focus')
   }
 
   static async showSync(): Promise<void> {
-    SidebarView.show('sync', 'MeterSphere - Sync', SidebarView.getSyncHtml())
-    
+    await vscode.commands.executeCommand('metersphere.sync.focus')
+
     const msUrl = SettingsManager.getMsUrl()
     const accessKey = SettingsManager.getAccessKey()
     const secretKey = SettingsManager.getSecretKey()
     if (!msUrl || !accessKey || !secretKey) {
       return
     }
+    await SidebarView.loadProjectModules()
+  }
+
+  static async loadProjectModules(): Promise<void> {
+    const msUrl = SettingsManager.getMsUrl()
+    const accessKey = SettingsManager.getAccessKey()
+    const secretKey = SettingsManager.getSecretKey()
+    if (!msUrl || !accessKey || !secretKey) return
+
     try {
       const headers = SettingsManager.buildAuthHeaders('application/json')
       const workspaceId = SettingsManager.getWorkspaceId()
@@ -63,7 +81,7 @@ export class SidebarView {
           name: m.name,
         }))
 
-        SidebarView.panel?.webview.postMessage({
+        SidebarView.postMessage({
           command: 'projectLoaded',
           name: targetProject.name,
           data: { modules: fullModules }
@@ -75,43 +93,24 @@ export class SidebarView {
   }
 
   static sendFilesToSync(filePaths: string[]): void {
-    if (SidebarView.panel) {
-      SidebarView.panel.webview.postMessage({
+    const syncView = SidebarView.views['sync']
+    if (syncView) {
+      syncView.webview.postMessage({
         command: 'javaFilesSelected',
         files: filePaths,
       })
     }
   }
 
-  static postMessage(command: string, data?: Record<string, unknown>): void {
-    if (SidebarView.panel) {
-      SidebarView.panel.webview.postMessage({ command, data })
+  static postMessage(msg: Record<string, unknown>, viewId?: string): void {
+    const targetId = viewId || 'sync'
+    const view = SidebarView.views[targetId]
+    if (view) {
+      view.webview.postMessage(msg).catch(() => {})
     }
   }
 
-  private static show(viewId: string, title: string, html: string): void {
-    if (SidebarView.panel && SidebarView.panel.viewType !== `metersphere.${viewId}`) {
-      SidebarView.panel.dispose()
-      SidebarView.panel = undefined
-    }
-
-    if (SidebarView.panel) {
-      SidebarView.panel.reveal(vscode.ViewColumn.One)
-      SidebarView.panel.webview.html = html
-    } else {
-      SidebarView.panel = vscode.window.createWebviewPanel(`metersphere.${viewId}`, title, vscode.ViewColumn.One, { enableScripts: true })
-      SidebarView.panel.webview.html = html
-      SidebarView.panel.onDidDispose(() => {
-        SidebarView.panel = undefined
-      })
-    }
-
-    SidebarView.panel.webview.onDidReceiveMessage(async (message) => {
-      await SidebarView.handleMessage(message as any)
-    })
-  }
-
-  private static async handleMessage(message: { command: string; data?: any }): Promise<void> {
+  static async handleMessage(message: { command: string; data?: any }, viewId?: string): Promise<void> {
     switch (message.command) {
       case 'saveSettings':
         SettingsManager.setMsUrl(message.data.msUrl)
@@ -128,7 +127,7 @@ export class SidebarView {
           title: 'Select Java Controller Files',
         })
         if (fileUris && fileUris.length > 0) {
-          SidebarView.panel?.webview.postMessage({
+          SidebarView.postMessage({
             command: 'javaFilesSelected',
             files: fileUris.map((u: any) => u.fsPath),
           })
@@ -146,11 +145,31 @@ export class SidebarView {
       case 'testConnection':
         vscode.commands.executeCommand('metersphere.testConnection')
         break
+
+      case 'loadEnvironments':
+        await SidebarView.loadEnvironments(viewId || 'environment')
+        break
+
+      case 'loadHistory':
+        SidebarView.loadHistory(viewId || 'history')
+        break
+
+      case 'clearHistory':
+        SidebarView.clearHistory(viewId || 'history')
+        break
+
+      case 'openInDebugger':
+        vscode.commands.executeCommand('metersphere.showDebugger')
+        break
+
+      case 'loadProjectData':
+        await SidebarView.loadProjectModules()
+        break
     }
   }
 
   private static async handleUpload(uploadData: any): Promise<void> {
-    SidebarView.panel?.webview.postMessage({ command: 'uploadProgress', data: { message: 'Parsing Java files...' } })
+    SidebarView.postMessage({ command: 'uploadProgress', data: { message: 'Parsing Java files...' } })
     
     try {
       let allApis = { classes: [] as any[], apis: [] as any[] }
@@ -164,7 +183,7 @@ export class SidebarView {
       }
 
       if (allApis.apis.length === 0) {
-        SidebarView.panel?.webview.postMessage({ command: 'uploadError', data: { message: 'No @RestController or @Controller classes found in selected files' } })
+        SidebarView.postMessage({ command: 'uploadError', data: { message: 'No @RestController or @Controller classes found in selected files' } })
         return
       }
 
@@ -172,7 +191,7 @@ export class SidebarView {
       const hasJavaExt = vscode.extensions.all.some((ext: any) => javaExts.includes(ext.id))
       
       if (!hasJavaExt) {
-        SidebarView.panel?.webview.postMessage({ command: 'javaExtMissing' })
+        SidebarView.postMessage({ command: 'javaExtMissing' })
       } else {
         try {
           allApis = await JavaParser.enhanceWithJavadoc(allApis, uploadData.files[0])
@@ -181,7 +200,7 @@ export class SidebarView {
         }
       }
 
-      SidebarView.panel?.webview.postMessage({ command: 'uploadProgress', data: { message: 'Converting to Postman format...' } })
+      SidebarView.postMessage({ command: 'uploadProgress', data: { message: 'Converting to Postman format...' } })
 
       const collectionName = uploadData.files.length === 1
         ? uploadData.files[0].split(/[/\\]/).pop()?.replace('.java', '') || 'Java API'
@@ -208,11 +227,11 @@ export class SidebarView {
       const secretKey = SettingsManager.getSecretKey()
 
       if (!msUrl || !accessKey || !secretKey) {
-        SidebarView.panel?.webview.postMessage({ command: 'uploadError', data: { message: 'MeterSphere credentials not configured. Please check Settings.' } })
+        SidebarView.postMessage({ command: 'uploadError', data: { message: 'MeterSphere credentials not configured. Please check Settings.' } })
         return
       }
 
-      SidebarView.panel?.webview.postMessage({ command: 'uploadProgress', data: { message: 'Uploading to MeterSphere...' } })
+      SidebarView.postMessage({ command: 'uploadProgress', data: { message: 'Uploading to MeterSphere...' } })
 
       const isFullCoverage = uploadData.mode === 'fullCoverage'
       const urlCoverModule = isFullCoverage ? 'true' : 'false'
@@ -358,14 +377,126 @@ export class SidebarView {
       })
 
       if (response.ok) {
-        SidebarView.panel?.webview.postMessage({ command: 'uploadSuccess', data: { count: allApis.apis.length } })
+        SidebarView.postMessage({ command: 'uploadSuccess', data: { count: allApis.apis.length } })
       } else {
-        SidebarView.panel?.webview.postMessage({ command: 'uploadError', data: { message: `Upload failed: ${response.status} ${responseText}` } })
+        SidebarView.postMessage({ command: 'uploadError', data: { message: `Upload failed: ${response.status} ${responseText}` } })
       }
     } catch (error) {
       DebugLogger.error('Sync', 'Upload failed', error)
-      SidebarView.panel?.webview.postMessage({ command: 'uploadError', data: { message: `Error: ${error instanceof Error ? error.message : String(error)}` } })
+      SidebarView.postMessage({ command: 'uploadError', data: { message: `Error: ${error instanceof Error ? error.message : String(error)}` } })
     }
+  }
+
+  private static async loadEnvironments(viewId: string): Promise<void> {
+    const msUrl = SettingsManager.getMsUrl()
+    const accessKey = SettingsManager.getAccessKey()
+    const secretKey = SettingsManager.getSecretKey()
+    if (!msUrl || !accessKey || !secretKey) {
+      SidebarView.postMessage({ command: 'environmentsError', data: { message: 'MeterSphere not configured' } }, viewId)
+      return
+    }
+    try {
+      const projectId = SettingsManager.getProjectId()
+      if (!projectId) {
+        SidebarView.postMessage({ command: 'environmentsError', data: { message: 'No project selected. Use Navigator to select a project.' } }, viewId)
+        return
+      }
+      const headers = SettingsManager.buildAuthHeaders('application/json')
+      const resp = await fetch(`${msUrl}/api/environment/list/${projectId}`, { headers })
+      const json = await resp.json()
+      const environments = json.success && json.data ? json.data : []
+      SidebarView.postMessage({ command: 'environmentsLoaded', data: { environments, projectId } }, viewId)
+    } catch (error) {
+      DebugLogger.error('Environment', 'Failed to load environments', error)
+      SidebarView.postMessage({ command: 'environmentsError', data: { message: error instanceof Error ? error.message : String(error) } }, viewId)
+    }
+  }
+
+  private static loadHistory(viewId: string): void {
+    try {
+      const context = ContextHolder.getContext()
+      const history = context.workspaceState.get<any[]>('debuggerHistory', [])
+      SidebarView.postMessage({ command: 'historyLoaded', data: { history } }, viewId)
+    } catch (error) {
+      DebugLogger.error('History', 'Failed to load history', error)
+      SidebarView.postMessage({ command: 'historyError', data: { message: String(error) } }, viewId)
+    }
+  }
+
+  private static async clearHistory(viewId: string): Promise<void> {
+    try {
+      const context = ContextHolder.getContext()
+      await context.workspaceState.update('debuggerHistory', [])
+      SidebarView.postMessage({ command: 'historyLoaded', data: { history: [] } }, viewId)
+    } catch (error) {
+      DebugLogger.error('History', 'Failed to clear history', error)
+    }
+  }
+
+  private static getThemeStyles(): string {
+    return `
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      padding: 16px;
+      margin: 0;
+      color: var(--vscode-editor-foreground);
+    }
+    h3 { margin: 0 0 16px 0; font-weight: 600; font-size: 14px; }
+    label { display: block; margin-bottom: 4px; font-weight: 500; font-size: 13px; }
+    input, select, textarea {
+      width: 100%;
+      padding: 6px 8px;
+      box-sizing: border-box;
+      border: 1px solid var(--vscode-input-border, transparent);
+      border-radius: 4px;
+      background: var(--vscode-input-background);
+      color: var(--vscode-input-foreground);
+      font-family: inherit;
+      font-size: 13px;
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: var(--vscode-focusBorder);
+    }
+    button {
+      padding: 6px 14px;
+      cursor: pointer;
+      border: none;
+      border-radius: 4px;
+      font-weight: 500;
+      font-size: 13px;
+      font-family: inherit;
+    }
+    .btn-primary {
+      background: var(--vscode-button-background);
+      color: var(--vscode-button-foreground);
+    }
+    .btn-primary:hover {
+      background: var(--vscode-button-hoverBackground);
+    }
+    .btn-secondary {
+      background: var(--vscode-button-secondaryBackground, var(--vscode-button-background));
+      color: var(--vscode-button-secondaryForeground, var(--vscode-button-foreground));
+    }
+    .btn-secondary:hover {
+      background: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-hoverBackground));
+    }
+    .btn-danger {
+      background: transparent;
+      color: var(--vscode-errorForeground, #e06c75);
+      border: 1px solid var(--vscode-errorForeground, #e06c75);
+    }
+    .btn-danger:hover { opacity: 0.8; }
+    .form-group { margin-bottom: 14px; }
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .checkbox-label input { width: auto; margin: 0; }
+    .empty { color: var(--vscode-descriptionForeground); font-style: italic; }
+    `;
   }
 
   static getEnvironmentHtml(): string {
@@ -373,15 +504,61 @@ export class SidebarView {
 <html>
 <head>
   <meta charset="UTF-8">
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 16px; margin: 0; }
-    h3 { margin: 0 0 16px 0; }
-    .empty { color: #666; font-style: italic; }
+  <style>${SidebarView.getThemeStyles()}
+    .env-card {
+      border: 1px solid var(--vscode-widget-border, transparent);
+      border-radius: 4px;
+      padding: 10px;
+      margin-bottom: 8px;
+    }
+    .env-name { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+    .env-detail { font-size: 12px; color: var(--vscode-descriptionForeground); margin: 2px 0; }
+    .env-detail strong { color: var(--vscode-editor-foreground); }
+    .toolbar { margin-bottom: 12px; }
+    .btn-icon { padding: 2px 8px; font-size: 11px; }
   </style>
 </head>
 <body>
-  <h3>Environment</h3>
-  <p class="empty">No environments configured yet.</p>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+    <h3 style="margin:0;">Environment</h3>
+    <button class="btn-secondary btn-icon" onclick="refresh()">Refresh</button>
+  </div>
+  <div id="content"><p class="empty">Loading environments...</p></div>
+  <script>
+    const vscode = acquireVsCodeApi();
+    vscode.postMessage({ command: 'loadEnvironments' });
+
+    window.addEventListener('message', function(event) {
+      const data = event.data;
+      if (data.command === 'environmentsLoaded') {
+        const envs = data.data.environments || [];
+        const projectId = data.data.projectId || '';
+        const container = document.getElementById('content');
+        if (envs.length === 0) {
+          container.innerHTML = '<p class="empty">No environments for this project.</p>';
+        } else {
+          container.innerHTML = envs.map(function(e) {
+            var details = '';
+            if (e.config) {
+              var c = e.config;
+              details += '<div class="env-detail"><strong>Config:</strong> ' + (c.protocol || 'HTTP') + '://' + (c.host || '-') + ':' + (c.port || '') + '</div>';
+            }
+            if (e.description) {
+              details += '<div class="env-detail">' + e.description + '</div>';
+            }
+            return '<div class="env-card"><div class="env-name">' + (e.name || 'Unnamed') + '</div>' + details + '</div>';
+          }).join('');
+        }
+      } else if (data.command === 'environmentsError') {
+        document.getElementById('content').innerHTML = '<p class="empty" style="color:var(--vscode-errorForeground)">' + (data.data?.message || 'Failed to load') + '</p>';
+      }
+    });
+
+    function refresh() {
+      document.getElementById('content').innerHTML = '<p class="empty">Loading environments...</p>';
+      vscode.postMessage({ command: 'loadEnvironments' });
+    }
+  </script>
 </body>
 </html>`
   }
@@ -391,15 +568,125 @@ export class SidebarView {
 <html>
 <head>
   <meta charset="UTF-8">
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 16px; margin: 0; }
-    h3 { margin: 0 0 16px 0; }
-    .empty { color: #666; font-style: italic; }
+  <style>${SidebarView.getThemeStyles()}
+    .history-item {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--vscode-widget-border, transparent);
+      cursor: pointer;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .history-item:hover { background: var(--vscode-list-hoverBackground); }
+    .history-method {
+      font-weight: 600;
+      font-size: 10px;
+      padding: 1px 5px;
+      border-radius: 3px;
+      min-width: 38px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+    .method-GET { background: var(--vscode-testing-iconPassedForeground, #4ec9b0); color: #fff; }
+    .method-POST { background: var(--vscode-testing-iconFailedForeground, #f14c4c); color: #fff; }
+    .method-PUT { background: var(--vscode-editorInfo-foreground, #3794ff); color: #fff; }
+    .method-DELETE { background: var(--vscode-inputValidation-errorBorder, #f14c4c); color: #fff; }
+    .method-PATCH { background: var(--vscode-editorWarning-foreground, #cc7a00); color: #fff; }
+    .history-url {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--vscode-editor-foreground);
+    }
+    .history-status {
+      font-size: 10px;
+      padding: 1px 4px;
+      border-radius: 3px;
+      flex-shrink: 0;
+      font-weight: 500;
+    }
+    .status-success { color: var(--vscode-testing-iconPassedForeground, #4ec9b0); }
+    .status-fail { color: var(--vscode-testing-iconFailedForeground, #f14c4c); }
+    .history-time {
+      font-size: 10px;
+      color: var(--vscode-descriptionForeground);
+      flex-shrink: 0;
+    }
+    .toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .btn-icon { padding: 2px 8px; font-size: 11px; }
+    .no-history {
+      padding: 20px;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
-  <h3>Request History</h3>
-  <p class="empty">No requests yet.</p>
+  <div class="toolbar">
+    <h3 style="margin:0;">Request History</h3>
+    <button class="btn-danger btn-icon" onclick="clearHistory()">Clear</button>
+  </div>
+  <div id="content"><p class="empty">Loading history...</p></div>
+  <script>
+    const vscode = acquireVsCodeApi();
+    vscode.postMessage({ command: 'loadHistory' });
+
+    function timeAgo(ts) {
+      var diff = Date.now() - ts;
+      var seconds = Math.floor(diff / 1000);
+      if (seconds < 60) return seconds + 's ago';
+      var minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return minutes + 'm ago';
+      var hours = Math.floor(minutes / 60);
+      if (hours < 24) return hours + 'h ago';
+      var days = Math.floor(hours / 24);
+      return days + 'd ago';
+    }
+
+    function methodClass(method) {
+      return 'method-' + (method || 'GET').toUpperCase();
+    }
+
+    window.addEventListener('message', function(event) {
+      const data = event.data;
+      if (data.command === 'historyLoaded') {
+        const history = data.data?.history || [];
+        const container = document.getElementById('content');
+        if (history.length === 0) {
+          container.innerHTML = '<div class="no-history"><p class="empty">No requests yet.</p><p style="font-size:11px;color:var(--vscode-descriptionForeground);margin-top:8px;">Send requests from the API Debugger panel to see them here.</p></div>';
+        } else {
+          container.innerHTML = history.map(function(item) {
+            var method = (item.method || 'GET').toUpperCase();
+            var statusClass = item.success ? 'status-success' : 'status-fail';
+            return '<div class="history-item" onclick="openInDebugger(\'' + method + '\', \'' + (item.url || '').replace(/'/g, "\\'") + '\')">' +
+              '<span class="history-method ' + methodClass(item.method) + '">' + method + '</span>' +
+              '<span class="history-url" title="' + (item.url || '') + '">' + (item.url || '') + '</span>' +
+              '<span class="history-status ' + statusClass + '">' + (item.status || '-') + '</span>' +
+              '<span class="history-time">' + timeAgo(item.timestamp) + '</span>' +
+              '</div>';
+          }).join('');
+        }
+      } else if (data.command === 'historyError') {
+        document.getElementById('content').innerHTML = '<p class="empty" style="color:var(--vscode-errorForeground)">' + (data.data?.message || 'Failed to load history') + '</p>';
+      }
+    });
+
+    function clearHistory() {
+      if (confirm('Clear all request history?')) {
+        vscode.postMessage({ command: 'clearHistory' });
+      }
+    }
+
+    function openInDebugger(method, url) {
+      vscode.postMessage({ command: 'openInDebugger', data: { method: method, url: url } });
+    }
+  </script>
 </body>
 </html>`
   }
@@ -414,18 +701,7 @@ export class SidebarView {
 <html>
 <head>
   <meta charset="UTF-8">
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 16px; margin: 0; }
-    h3 { margin: 0 0 16px 0; }
-    .form-group { margin-bottom: 16px; }
-    label { display: block; margin-bottom: 4px; font-weight: 500; }
-    input[type="text"], input[type="password"] { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
-    button { padding: 8px 16px; cursor: pointer; border: none; border-radius: 4px; font-weight: 500; }
-    .btn-primary { background: #007acc; color: white; margin-right: 8px; }
-    .btn-secondary { background: #6c757d; color: white; }
-    .checkbox-label { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
-    .checkbox-label input { width: auto; margin: 0; }
-  </style>
+  <style>${SidebarView.getThemeStyles()}</style>
 </head>
 <body>
   <h3>Settings</h3>
@@ -473,26 +749,56 @@ export class SidebarView {
 <html>
 <head>
   <meta charset="UTF-8">
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 16px; margin: 0; }
-    h3 { margin: 0 0 16px 0; }
-    label { display: block; margin-bottom: 4px; font-weight: 500; }
-    select, input[type="text"] { width: 100%; padding: 8px; margin-bottom: 12px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
-    .info { background: rgba(0,122,204,0.1); border: 1px solid #007acc; border-radius: 6px; padding: 12px; margin-bottom: 16px; font-size: 13px; }
-    .warning { background: rgba(204,122,0,0.1); border: 1px solid #cc7a00; border-radius: 6px; padding: 12px; margin-bottom: 16px; font-size: 13px; }
-    .warning a { color: #007acc; text-decoration: none; }
-    button { padding: 8px 16px; cursor: pointer; border: none; border-radius: 4px; font-weight: 500; font-size: 13px; }
-    .btn-primary { background: #007acc; color: white; }
-    .btn-secondary { background: #6c757d; color: white; margin-right: 8px; }
-    .form-group { margin-bottom: 16px; }
-    .file-list { margin-bottom: 12px; padding: 8px; background: #f5f5f5; border-radius: 4px; }
-    .file-list-item { padding: 4px 8px; margin: 4px 0; background: white; border-radius: 2px; font-size: 12px; }
-    .status { padding: 8px 12px; border-radius: 4px; margin-bottom: 12px; }
-    .status.success { background: #d4edda; color: #155724; }
-    .status.error { background: #f8d7da; color: #721c24; }
-    .status.loading { background: #fff3cd; color: #856404; }
-    .checkbox-label { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
-    .checkbox-label input { width: auto; margin: 0; }
+  <style>${SidebarView.getThemeStyles()}
+    .info {
+      border: 1px solid var(--vscode-textLink-foreground, #3794ff);
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 16px;
+      font-size: 13px;
+    }
+    .warning {
+      border: 1px solid var(--vscode-list-warningForeground, #cc7a00);
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 16px;
+      font-size: 13px;
+    }
+    .warning a { color: var(--vscode-textLink-foreground); text-decoration: none; }
+    .warning a:hover { text-decoration: underline; }
+    select { margin-bottom: 12px; }
+    .file-list {
+      margin-bottom: 12px;
+      padding: 8px;
+      border: 1px solid var(--vscode-widget-border, transparent);
+      border-radius: 4px;
+    }
+    .file-list-item {
+      padding: 4px 8px;
+      margin: 4px 0;
+      border-radius: 2px;
+      font-size: 12px;
+    }
+    .status {
+      padding: 8px 12px;
+      border-radius: 4px;
+      margin-bottom: 12px;
+      font-size: 13px;
+      border: 1px solid transparent;
+    }
+    .status.success {
+      border-color: var(--vscode-testing-iconPassedForeground, #4ec9b0);
+      color: var(--vscode-testing-iconPassedForeground, #4ec9b0);
+    }
+    .status.error {
+      border-color: var(--vscode-testing-iconFailedForeground, #f14c4c);
+      color: var(--vscode-testing-iconFailedForeground, #f14c4c);
+    }
+    .status.loading {
+      border-color: var(--vscode-textLink-foreground, #3794ff);
+      color: var(--vscode-textLink-foreground, #3794ff);
+    }
+    .uploadBtn:disabled { opacity: 0.5; cursor: default; }
   </style>
 </head>
 <body>
@@ -508,7 +814,7 @@ export class SidebarView {
   <div class="form-group">
     <label>Java Files</label>
     <button class="btn-secondary" onclick="selectFiles()">Select Java Files</button>
-    <div class="file-list" id="fileList"><div style="color:#666;font-style:italic">No files selected</div></div>
+    <div class="file-list" id="fileList"><div style="font-style:italic">No files selected</div></div>
   </div>
   <label>Module (from Navigator)</label>
   <select id="moduleSelect"><option value="">Select module...</option></select>
@@ -526,25 +832,23 @@ export class SidebarView {
     <label style="margin:0;font-weight:normal">Sync Test Cases</label>
   </div>
   <div id="status"></div>
-  <button class="btn-primary" id="uploadBtn" onclick="upload()">Upload to MeterSphere</button>
+  <button class="btn-primary uploadBtn" id="uploadBtn" onclick="upload()">Upload to MeterSphere</button>
   <script>
     const vscode = acquireVsCodeApi();
     let selectedFiles = [];
     let isScanning = false;
     let uploadEnabled = false;
 
+    vscode.postMessage({ command: 'loadProjectData' });
+
     function setUploadEnabled(enabled) {
       uploadEnabled = enabled;
       const btn = document.getElementById('uploadBtn');
+      btn.disabled = !enabled;
       if (enabled) {
-        btn.disabled = false;
         btn.textContent = 'Upload to MeterSphere';
-        btn.className = 'btn-primary';
       } else {
-        btn.disabled = true;
         btn.textContent = isScanning ? 'Scanning...' : 'Upload to MeterSphere';
-        btn.className = 'btn-primary';
-        btn.style.opacity = '0.6';
       }
     }
 
@@ -556,7 +860,7 @@ export class SidebarView {
         selectedFiles = data.files || [];
         const fileList = document.getElementById('fileList');
         fileList.innerHTML = selectedFiles.length === 0 
-          ? '<div style="color:#666;font-style:italic">No files selected</div>'
+          ? '<div style="font-style:italic">No files selected</div>'
           : selectedFiles.map(f => '<div class="file-list-item">' + f.split('/').pop() + '</div>').join('');
         if (selectedFiles.length > 0) uploadEnabled = true;
         setUploadEnabled(uploadEnabled);
@@ -565,7 +869,7 @@ export class SidebarView {
         selectedFiles = [];
         uploadEnabled = false;
         const fileList = document.getElementById('fileList');
-        fileList.innerHTML = '<div style="color:#666;font-style:italic">Scanning...</div>';
+        fileList.innerHTML = '<div style="font-style:italic">Scanning...</div>';
         showStatus(data.data?.message || 'Scanning...', 'loading');
         setUploadEnabled(false);
       } else if (data.command === 'scanComplete') {
@@ -575,13 +879,13 @@ export class SidebarView {
           selectedFiles = [];
           uploadEnabled = false;
           const fileList = document.getElementById('fileList');
-          fileList.innerHTML = '<div style="color:#666;font-style:italic">No files selected</div>';
+          fileList.innerHTML = '<div style="font-style:italic">No files selected</div>';
         } else {
           selectedFiles = data.data?.files || [];
           showStatus('Found ' + selectedFiles.length + ' Java files', 'success');
           const fileList = document.getElementById('fileList');
           fileList.innerHTML = selectedFiles.length === 0 
-            ? '<div style="color:#666;font-style:italic">No files selected</div>'
+            ? '<div style="font-style:italic">No files selected</div>'
             : selectedFiles.map(f => '<div class="file-list-item">' + f.split('/').pop() + '</div>').join('');
           uploadEnabled = selectedFiles.length > 0;
         }

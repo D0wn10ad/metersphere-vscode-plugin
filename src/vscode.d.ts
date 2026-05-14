@@ -44,6 +44,7 @@ declare module 'vscode' {
 
   export interface Webview {
     html: string
+    options?: { enableScripts?: boolean }
     onDidReceiveMessage: (callback: (message: WebviewMessage) => void) => Disposable
     postMessage(message: unknown): Promise<boolean>
   }
