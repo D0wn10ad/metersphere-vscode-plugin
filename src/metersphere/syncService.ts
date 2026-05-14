@@ -70,7 +70,7 @@ export class SyncService {
     }
 
     const item: PostmanItem = {
-      name: `${api.method} ${api.path || 'unknown'}`,
+      name: api.summary || `${api.method} ${api.path || 'unknown'}`,
       request: {
         method: api.method || 'GET',
         header: [],

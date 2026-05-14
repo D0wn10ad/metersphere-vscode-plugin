@@ -78,7 +78,8 @@
     "commands": [
       {
         "command": "metersphere.showDebugger",
-        "title": "MeterSphere: Show Debugger"
+        "title": "MeterSphere: Show Debugger",
+        "icon": "$(debug)"
       },
       {
         "command": "metersphere.refreshNavigator",
