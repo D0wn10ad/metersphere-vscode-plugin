@@ -31,6 +31,7 @@ export class SidebarView {
 
   static async showSync(): Promise<void> {
     await vscode.commands.executeCommand('metersphere.sync.focus')
+    await SidebarView.loadProjectModules()
   }
 
   static async loadProjectModules(): Promise<void> {
