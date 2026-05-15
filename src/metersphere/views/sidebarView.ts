@@ -540,11 +540,12 @@ export class SidebarView {
 <body>
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
     <h3 style="margin:0;">Environment</h3>
-    <button class="btn-secondary btn-icon" onclick="refresh()">Refresh</button>
+    <button class="btn-secondary btn-icon" id="envRefreshBtn">Refresh</button>
   </div>
   <div id="content"><p class="empty">Loading environments...</p></div>
   <script>
     const vscode = acquireVsCodeApi();
+    document.getElementById('envRefreshBtn').addEventListener('click', function() { document.getElementById('content').innerHTML = '<p class="empty">Loading environments...</p>'; vscode.postMessage({ command: 'loadEnvironments' }); });
     vscode.postMessage({ command: 'loadEnvironments' });
 
     window.addEventListener('message', function(event) {
@@ -649,12 +650,18 @@ export class SidebarView {
 <body>
   <div class="toolbar">
     <h3 style="margin:0;">Request History</h3>
-    <button class="btn-danger btn-icon" onclick="clearHistory()">Clear</button>
+    <button class="btn-danger btn-icon" id="historyClearBtn">Clear</button>
   </div>
   <div id="content"><p class="empty">Loading history...</p></div>
   <script>
     const vscode = acquireVsCodeApi();
-    vscode.postMessage({ command: 'loadHistory' });
+    document.getElementById('historyClearBtn').addEventListener('click', function() { if (confirm('Clear all request history?')) { vscode.postMessage({ command: 'clearHistory' }); } });
+    document.getElementById('content').addEventListener('click', function(e) {
+      var item = e.target.closest('.history-item');
+      if (item) {
+        vscode.postMessage({ command: 'openInDebugger', data: { method: item.dataset.method, url: item.dataset.url } });
+      }
+    });
 
     function timeAgo(ts) {
       var diff = Date.now() - ts;
@@ -683,9 +690,9 @@ export class SidebarView {
           container.innerHTML = history.map(function(item) {
             var method = (item.method || 'GET').toUpperCase();
             var statusClass = item.success ? 'status-success' : 'status-fail';
-            return '<div class="history-item" onclick="openInDebugger(\'' + method + '\', \'' + (item.url || '').replace(/'/g, "\\'") + '\')">' +
+            return '<div class="history-item" data-method="' + method + '" data-url="' + (item.url || '').replace(/"/g, '&quot;') + '">' +
               '<span class="history-method ' + methodClass(item.method) + '">' + method + '</span>' +
-              '<span class="history-url" title="' + (item.url || '') + '">' + (item.url || '') + '</span>' +
+              '<span class="history-url" title="' + (item.url || '').replace(/"/g, '&quot;') + '">' + (item.url || '') + '</span>' +
               '<span class="history-status ' + statusClass + '">' + (item.status || '-') + '</span>' +
               '<span class="history-time">' + timeAgo(item.timestamp) + '</span>' +
               '</div>';
@@ -741,11 +748,12 @@ export class SidebarView {
       <input type="checkbox" id="debugEnabled" ${debugEnabled}>
       <label style="margin: 0; font-weight: normal;">Enable Debug Logging</label>
     </div>
-    <button type="button" class="btn-secondary" onclick="testConnection()">Test Connection</button>
+    <button type="button" class="btn-secondary" id="settingsTestBtn">Test Connection</button>
     <button type="submit" class="btn-primary">Save Settings</button>
   </form>
   <script>
     const vscode = acquireVsCodeApi();
+    document.getElementById('settingsTestBtn').addEventListener('click', function() { vscode.postMessage({ command: 'testConnection' }); });
     function save(event) {
       event.preventDefault();
       vscode.postMessage({ command: 'saveSettings', data: {
@@ -776,34 +784,38 @@ export class SidebarView {
 <meta charset="UTF-8">
 <style>
 ${SidebarView.getThemeStyles()}
-.tab-bar {
+.panel {
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+.panel-header {
   display: flex;
-  border-bottom: 1px solid var(--vscode-widget-border);
-  margin-bottom: 16px;
-  gap: 0;
-}
-.tab {
-  padding: 8px 14px;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
   cursor: pointer;
-  border: none;
-  background: none;
-  color: var(--vscode-editor-foreground);
+  user-select: none;
   font-size: 13px;
-  font-family: inherit;
-  border-bottom: 2px solid transparent;
-  opacity: 0.7;
-}
-.tab:hover {
-  background: var(--vscode-list-hoverBackground);
-  opacity: 1;
-}
-.tab.active {
-  border-bottom-color: var(--vscode-focusBorder);
-  opacity: 1;
   font-weight: 600;
+  color: var(--vscode-editor-foreground);
 }
-.tab-content { display: none; }
-.tab-content.active { display: block; }
+.panel-header:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+.panel-content {
+  display: none;
+  padding: 0 12px 12px;
+}
+.panel-content.expanded {
+  display: block;
+}
+.accordion-arrow {
+  font-size: 10px;
+  transition: transform 0.15s ease;
+  color: var(--vscode-descriptionForeground);
+}
+.accordion-arrow.expanded {
+  transform: rotate(90deg);
+}
 .env-card {
   border: 1px solid var(--vscode-widget-border, transparent);
   border-radius: 4px;
@@ -912,15 +924,12 @@ ${SidebarView.getThemeStyles()}
 </style>
 </head>
 <body>
-<div class="tab-bar">
-  <button class="tab active" data-tab="sync">Sync</button>
-  <button class="tab" data-tab="settings">Settings</button>
-  <button class="tab" data-tab="environment">Environment</button>
-  <button class="tab" data-tab="history">History</button>
-</div>
-
-<!-- Sync Tab -->
-<div id="tab-sync" class="tab-content active">
+<div class="panel">
+  <div class="panel-header active" data-panel="sync">
+    <span class="panel-title">Sync</span>
+    <span class="accordion-arrow expanded">▶</span>
+  </div>
+  <div id="panel-sync" class="panel-content expanded">
   <h3>Sync to MeterSphere</h3>
   <div class="info" style="padding:8px 12px;margin-bottom:12px;font-size:12px;">
     <strong>Export Java Controllers</strong> &mdash; Project: <strong id="currentProject">Loading...</strong>
@@ -950,10 +959,14 @@ ${SidebarView.getThemeStyles()}
   </div>
   <div id="status"></div>
   <button class="btn-primary uploadBtn" id="uploadBtn">Upload to MeterSphere</button>
+  </div>
 </div>
-
-<!-- Settings Tab -->
-<div id="tab-settings" class="tab-content">
+<div class="panel">
+  <div class="panel-header" data-panel="settings">
+    <span class="panel-title">Settings</span>
+    <span class="accordion-arrow">▶</span>
+  </div>
+  <div id="panel-settings" class="panel-content">
   <h3>Settings</h3>
   <form id="settingsForm">
     <div class="form-group">
@@ -975,24 +988,33 @@ ${SidebarView.getThemeStyles()}
     <button type="button" class="btn-secondary" id="testConnectionBtn">Test Connection</button>
     <button type="submit" class="btn-primary">Save Settings</button>
   </form>
+  </div>
 </div>
-
-<!-- Environment Tab -->
-<div id="tab-environment" class="tab-content">
+<div class="panel">
+  <div class="panel-header" data-panel="environment">
+    <span class="panel-title">Environment</span>
+    <span class="accordion-arrow">▶</span>
+  </div>
+  <div id="panel-environment" class="panel-content">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
     <h3 style="margin:0;">Environment</h3>
     <button class="btn-secondary btn-icon" id="refreshEnvsBtn">Refresh</button>
   </div>
   <div id="envContent"><p class="empty">Loading environments...</p></div>
+  </div>
 </div>
-
-<!-- History Tab -->
-<div id="tab-history" class="tab-content">
+<div class="panel">
+  <div class="panel-header" data-panel="history">
+    <span class="panel-title">History</span>
+    <span class="accordion-arrow">▶</span>
+  </div>
+  <div id="panel-history" class="panel-content">
   <div class="toolbar">
     <h3 style="margin:0;">Request History</h3>
     <button class="btn-danger btn-icon" id="clearHistoryBtn">Clear</button>
   </div>
   <div id="historyContent"><p class="empty">Loading history...</p></div>
+  </div>
 </div>
 
 <script>
@@ -1003,8 +1025,8 @@ let uploadEnabled = false;
 
 // Wire up event listeners after DOM is ready
 (function() {
-  document.querySelectorAll('.tab').forEach(function(t) {
-    t.addEventListener('click', function() { switchTab(this.dataset.tab); });
+  document.querySelectorAll('.panel-header').forEach(function(t) {
+    t.addEventListener('click', function() { togglePanel(this.dataset.panel); });
   });
   document.getElementById('uploadBtn').addEventListener('click', upload);
   document.getElementById('selectFilesBtn').addEventListener('click', function() { vscode.postMessage({ command: 'selectJavaFiles' }); });
@@ -1022,17 +1044,31 @@ let uploadEnabled = false;
   });
 })();
 
-function switchTab(tabId) {
-  document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
-  document.querySelectorAll('.tab-content').forEach(function(t) { t.classList.remove('active'); });
-  document.querySelector('[data-tab="' + tabId + '"]').classList.add('active');
-  document.getElementById('tab-' + tabId).classList.add('active');
+function togglePanel(panelId) {
+  var content = document.getElementById('panel-' + panelId);
 
-  if (tabId === 'sync') {
+  if (content.classList.contains('expanded')) {
+    content.classList.remove('expanded');
+    content.parentElement.querySelector('.panel-header').classList.remove('active');
+    content.parentElement.querySelector('.accordion-arrow').classList.remove('expanded');
+    return;
+  }
+
+  document.querySelectorAll('.panel-content.expanded').forEach(function(p) {
+    p.classList.remove('expanded');
+    p.parentElement.querySelector('.panel-header').classList.remove('active');
+    p.parentElement.querySelector('.accordion-arrow').classList.remove('expanded');
+  });
+
+  content.classList.add('expanded');
+  content.parentElement.querySelector('.panel-header').classList.add('active');
+  content.parentElement.querySelector('.accordion-arrow').classList.add('expanded');
+
+  if (panelId === 'sync') {
     vscode.postMessage({ command: 'loadProjectData' });
-  } else if (tabId === 'environment') {
+  } else if (panelId === 'environment') {
     vscode.postMessage({ command: 'loadEnvironments' });
-  } else if (tabId === 'history') {
+  } else if (panelId === 'history') {
     vscode.postMessage({ command: 'loadHistory' });
   }
 }
@@ -1108,7 +1144,7 @@ window.addEventListener('message', function(event) {
   var msg = event.data;
 
   if (msg.command === 'switchTab' && msg.data && msg.data.tab) {
-    switchTab(msg.data.tab);
+    togglePanel(msg.data.tab);
     return;
   }
 
@@ -1270,11 +1306,11 @@ window.addEventListener('message', function(event) {
     <p>Project: <strong id="currentProject">Loading...</strong></p>
   </div>
   <div class="warning" id="javaExtWarning" style="display:none">
-    <p>For Javadoc support, install: <a href="#" onclick="openExt('redhat.java')">Language Support for Java</a></p>
+    <p>For Javadoc support, install: <a href="#" id="syncJavaExtLink">Language Support for Java</a></p>
   </div>
   <div class="form-group">
     <label>Java Files</label>
-    <button class="btn-secondary" onclick="selectFiles()">Select Java Files</button>
+    <button class="btn-secondary" id="syncSelectFilesBtn">Select Java Files</button>
     <div class="file-list" id="fileList"><div style="font-style:italic">No files selected</div></div>
   </div>
   <label>Module (from Navigator)</label>
@@ -1293,12 +1329,16 @@ window.addEventListener('message', function(event) {
     <label style="margin:0;font-weight:normal">Sync Test Cases</label>
   </div>
   <div id="status"></div>
-  <button class="btn-primary uploadBtn" id="uploadBtn" onclick="upload()">Upload to MeterSphere</button>
+  <button class="btn-primary uploadBtn" id="uploadBtn">Upload to MeterSphere</button>
   <script>
     const vscode = acquireVsCodeApi();
     let selectedFiles = [];
     let isScanning = false;
     let uploadEnabled = false;
+
+    document.getElementById('syncJavaExtLink').addEventListener('click', function(e) { e.preventDefault(); vscode.postMessage({ command: 'openExtension', data: 'redhat.java' }); });
+    document.getElementById('syncSelectFilesBtn').addEventListener('click', function() { vscode.postMessage({ command: 'selectJavaFiles' }); });
+    document.getElementById('uploadBtn').addEventListener('click', upload);
 
     vscode.postMessage({ command: 'loadProjectData' });
 
