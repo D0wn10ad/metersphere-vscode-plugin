@@ -184,44 +184,42 @@
           "group": "meterSphere@1"
         }
       ],
-      "viewContainer/title": [
+      "view/title": [
+        {
+          "command": "metersphere.refreshNavigator",
+          "when": "view == metersphere.navigator",
+          "group": "navigation@0",
+          "icon": "$(refresh)"
+        },
         {
           "command": "metersphere.showEnvironment",
-          "when": "viewContainer == metersphere-sidebar",
+          "when": "view == metersphere.navigator || view == metersphere.environment || view == metersphere.history || view == metersphere.sync || view == metersphere.settings",
           "group": "navigation@1",
           "icon": "$(globe)"
         },
         {
           "command": "metersphere.showHistory",
-          "when": "viewContainer == metersphere-sidebar",
+          "when": "view == metersphere.navigator || view == metersphere.environment || view == metersphere.history || view == metersphere.sync || view == metersphere.settings",
           "group": "navigation@2",
           "icon": "$(history)"
         },
         {
           "command": "metersphere.showSync",
-          "when": "viewContainer == metersphere-sidebar",
+          "when": "view == metersphere.navigator || view == metersphere.environment || view == metersphere.history || view == metersphere.sync || view == metersphere.settings",
           "group": "navigation@3",
           "icon": "$(sync)"
         },
         {
           "command": "metersphere.showSettings",
-          "when": "viewContainer == metersphere-sidebar",
+          "when": "view == metersphere.navigator || view == metersphere.environment || view == metersphere.history || view == metersphere.sync || view == metersphere.settings",
           "group": "navigation@4",
           "icon": "$(gear)"
         },
         {
           "command": "metersphere.showDebugger",
-          "when": "viewContainer == metersphere-sidebar",
+          "when": "view == metersphere.navigator || view == metersphere.environment || view == metersphere.history || view == metersphere.sync || view == metersphere.settings",
           "group": "navigation@5",
           "icon": "$(debug)"
-        }
-      ],
-      "view/title": [
-        {
-          "command": "metersphere.refreshNavigator",
-          "when": "view == metersphere.navigator",
-          "group": "navigation",
-          "icon": "$(refresh)"
         }
       ],
       "view/item/context": [
