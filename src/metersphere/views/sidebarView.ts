@@ -764,9 +764,10 @@ export class SidebarView {
   }
 
   static getControlPanelHtml(): string {
-    const msUrl = SettingsManager.getMsUrl() ?? ''
-    const accessKey = SettingsManager.getAccessKey() ?? ''
-    const secretKey = SettingsManager.getSecretKey() ?? ''
+    const escapeAttr = (s: string): string => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const msUrl = escapeAttr(SettingsManager.getMsUrl() ?? '')
+    const accessKey = escapeAttr(SettingsManager.getAccessKey() ?? '')
+    const secretKey = escapeAttr(SettingsManager.getSecretKey() ?? '')
     const debugEnabled = SettingsManager.isDebugEnabled() ? 'checked' : ''
 
     return `<!DOCTYPE html>
@@ -912,26 +913,24 @@ ${SidebarView.getThemeStyles()}
 </head>
 <body>
 <div class="tab-bar">
-  <button class="tab active" data-tab="sync" onclick="switchTab('sync')">Sync</button>
-  <button class="tab" data-tab="settings" onclick="switchTab('settings')">Settings</button>
-  <button class="tab" data-tab="environment" onclick="switchTab('environment')">Environment</button>
-  <button class="tab" data-tab="history" onclick="switchTab('history')">History</button>
+  <button class="tab active" data-tab="sync">Sync</button>
+  <button class="tab" data-tab="settings">Settings</button>
+  <button class="tab" data-tab="environment">Environment</button>
+  <button class="tab" data-tab="history">History</button>
 </div>
 
 <!-- Sync Tab -->
 <div id="tab-sync" class="tab-content active">
   <h3>Sync to MeterSphere</h3>
-  <div class="info">
-    <p><strong>Export Java Spring Controllers to MeterSphere</strong></p>
-    <p>Select .java files with @RestController or @Controller annotations.</p>
-    <p>Project: <strong id="currentProject">Loading...</strong></p>
+  <div class="info" style="padding:8px 12px;margin-bottom:12px;font-size:12px;">
+    <strong>Export Java Controllers</strong> &mdash; Project: <strong id="currentProject">Loading...</strong>
   </div>
   <div class="warning" id="javaExtWarning" style="display:none">
-    <p>For Javadoc support, install: <a href="#" onclick="openExt('redhat.java')">Language Support for Java</a></p>
+    <p>For Javadoc support, install: <a href="#" id="javaExtLink">Language Support for Java</a></p>
   </div>
   <div class="form-group">
     <label>Java Files</label>
-    <button class="btn-secondary" onclick="selectFiles()">Select Java Files</button>
+    <button class="btn-secondary" id="selectFilesBtn">Select Java Files</button>
     <div class="file-list" id="fileList"><div style="font-style:italic">No files selected</div></div>
   </div>
   <label>Module (from Navigator)</label>
@@ -950,13 +949,13 @@ ${SidebarView.getThemeStyles()}
     <label style="margin:0;font-weight:normal">Sync Test Cases</label>
   </div>
   <div id="status"></div>
-  <button class="btn-primary uploadBtn" id="uploadBtn" onclick="upload()">Upload to MeterSphere</button>
+  <button class="btn-primary uploadBtn" id="uploadBtn">Upload to MeterSphere</button>
 </div>
 
 <!-- Settings Tab -->
 <div id="tab-settings" class="tab-content">
   <h3>Settings</h3>
-  <form onsubmit="save(event)">
+  <form id="settingsForm">
     <div class="form-group">
       <label>Server URL</label>
       <input type="text" id="msUrl" value="${msUrl}" placeholder="http://localhost:8080">
@@ -973,7 +972,7 @@ ${SidebarView.getThemeStyles()}
       <input type="checkbox" id="debugEnabled" ${debugEnabled}>
       <label style="margin: 0; font-weight: normal;">Enable Debug Logging</label>
     </div>
-    <button type="button" class="btn-secondary" onclick="testConnection()">Test Connection</button>
+    <button type="button" class="btn-secondary" id="testConnectionBtn">Test Connection</button>
     <button type="submit" class="btn-primary">Save Settings</button>
   </form>
 </div>
@@ -982,7 +981,7 @@ ${SidebarView.getThemeStyles()}
 <div id="tab-environment" class="tab-content">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
     <h3 style="margin:0;">Environment</h3>
-    <button class="btn-secondary btn-icon" onclick="refreshEnvs()">Refresh</button>
+    <button class="btn-secondary btn-icon" id="refreshEnvsBtn">Refresh</button>
   </div>
   <div id="envContent"><p class="empty">Loading environments...</p></div>
 </div>
@@ -991,7 +990,7 @@ ${SidebarView.getThemeStyles()}
 <div id="tab-history" class="tab-content">
   <div class="toolbar">
     <h3 style="margin:0;">Request History</h3>
-    <button class="btn-danger btn-icon" onclick="clearHistory()">Clear</button>
+    <button class="btn-danger btn-icon" id="clearHistoryBtn">Clear</button>
   </div>
   <div id="historyContent"><p class="empty">Loading history...</p></div>
 </div>
@@ -1001,6 +1000,27 @@ const vscode = acquireVsCodeApi();
 let selectedFiles = [];
 let isScanning = false;
 let uploadEnabled = false;
+
+// Wire up event listeners after DOM is ready
+(function() {
+  document.querySelectorAll('.tab').forEach(function(t) {
+    t.addEventListener('click', function() { switchTab(this.dataset.tab); });
+  });
+  document.getElementById('uploadBtn').addEventListener('click', upload);
+  document.getElementById('selectFilesBtn').addEventListener('click', function() { vscode.postMessage({ command: 'selectJavaFiles' }); });
+  document.getElementById('javaExtLink').addEventListener('click', function(e) { e.preventDefault(); vscode.postMessage({ command: 'openExtension', data: 'redhat.java' }); });
+  document.getElementById('settingsForm').addEventListener('submit', save);
+  document.getElementById('testConnectionBtn').addEventListener('click', function() { vscode.postMessage({ command: 'testConnection' }); });
+  document.getElementById('refreshEnvsBtn').addEventListener('click', refreshEnvs);
+  document.getElementById('clearHistoryBtn').addEventListener('click', clearHistory);
+  // Event delegation for dynamic history items
+  document.getElementById('historyContent').addEventListener('click', function(e) {
+    var item = e.target.closest('.history-item');
+    if (item) {
+      openInDebugger(item.dataset.method, item.dataset.url);
+    }
+  });
+})();
 
 function switchTab(tabId) {
   document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
@@ -1039,10 +1059,6 @@ function setUploadEnabled(enabled) {
   btn.disabled = !enabled;
   btn.textContent = enabled ? 'Upload to MeterSphere' : (isScanning ? 'Scanning...' : 'Upload to MeterSphere');
 }
-
-function selectFiles() { vscode.postMessage({ command: 'selectJavaFiles' }); }
-function openExt(extId) { vscode.postMessage({ command: 'openExtension', data: extId }); }
-function testConnection() { vscode.postMessage({ command: 'testConnection' }); }
 
 function showStatus(message, type) {
   document.getElementById('status').innerHTML = '<div class="status ' + type + '">' + message + '</div>';
@@ -1172,9 +1188,9 @@ window.addEventListener('message', function(event) {
       container.innerHTML = history.map(function(item) {
         var method = (item.method || 'GET').toUpperCase();
         var statusClass = item.success ? 'status-success' : 'status-fail';
-        return '<div class="history-item" onclick="openInDebugger(\'' + method + '\', \'' + (item.url || '').replace(/'/g, "\\\\'") + '\')">' +
+        return '<div class="history-item" data-method="' + method + '" data-url="' + (item.url || '').replace(/"/g, '&quot;') + '">' +
           '<span class="history-method ' + methodClass(item.method) + '">' + method + '</span>' +
-          '<span class="history-url" title="' + (item.url || '') + '">' + (item.url || '') + '</span>' +
+          '<span class="history-url" title="' + (item.url || '').replace(/"/g, '&quot;') + '">' + (item.url || '') + '</span>' +
           '<span class="history-status ' + statusClass + '">' + (item.status || '-') + '</span>' +
           '<span class="history-time">' + timeAgo(item.timestamp) + '</span>' +
           '</div>';

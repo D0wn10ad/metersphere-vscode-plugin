@@ -45,7 +45,7 @@ export class NavigatorNode {
     this.uri = options.uri
     this.contextValue = options.contextValue ?? options.type
     if (options.type === NodeType.FOLDER || options.type === NodeType.PROJECT || options.type === NodeType.WORKSPACE) {
-      this.collapsibleState = 2 // Expanded
+      this.collapsibleState = 1 // Collapsed
     }
   }
 

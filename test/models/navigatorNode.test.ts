@@ -25,6 +25,6 @@ describe('NavigatorNode', () => {
     })
     folder.addChild(new NavigatorNode({ id: 'api-1', name: 'Get', type: NodeType.API, parentId: 'folder-1' }))
     expect(folder.children.length).toBe(1)
-    expect(folder.collapsibleState).toBe(2) // Expanded
+    expect(folder.collapsibleState).toBe(1) // Collapsed
   })
 })
