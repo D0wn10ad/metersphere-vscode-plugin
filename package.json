@@ -187,26 +187,31 @@
       "viewContainer/title": [
         {
           "command": "metersphere.showEnvironment",
+          "when": "viewContainer == metersphere-sidebar",
           "group": "navigation@1",
           "icon": "$(globe)"
         },
         {
           "command": "metersphere.showHistory",
+          "when": "viewContainer == metersphere-sidebar",
           "group": "navigation@2",
           "icon": "$(history)"
         },
         {
           "command": "metersphere.showSync",
+          "when": "viewContainer == metersphere-sidebar",
           "group": "navigation@3",
           "icon": "$(sync)"
         },
         {
           "command": "metersphere.showSettings",
+          "when": "viewContainer == metersphere-sidebar",
           "group": "navigation@4",
           "icon": "$(gear)"
         },
         {
           "command": "metersphere.showDebugger",
+          "when": "viewContainer == metersphere-sidebar",
           "group": "navigation@5",
           "icon": "$(debug)"
         }
