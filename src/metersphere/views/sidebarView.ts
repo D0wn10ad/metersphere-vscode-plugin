@@ -18,25 +18,23 @@ export class SidebarView {
   }
 
   static showEnvironment(): void {
-    vscode.commands.executeCommand('metersphere.navigator.focus')
-    vscode.commands.executeCommand('metersphere.environment.focus')
-    vscode.commands.executeCommand('metersphere.showDebugger')
+    vscode.commands.executeCommand('metersphere.controlPanel.focus')
+    SidebarView.postMessage({ command: 'switchTab', data: { tab: 'environment' } }, 'controlPanel')
   }
 
   static showHistory(): void {
-    vscode.commands.executeCommand('metersphere.navigator.focus')
-    vscode.commands.executeCommand('metersphere.history.focus')
-    vscode.commands.executeCommand('metersphere.showDebugger')
+    vscode.commands.executeCommand('metersphere.controlPanel.focus')
+    SidebarView.postMessage({ command: 'switchTab', data: { tab: 'history' } }, 'controlPanel')
   }
 
   static showSettings(): void {
-    vscode.commands.executeCommand('metersphere.settings.focus')
+    vscode.commands.executeCommand('metersphere.controlPanel.focus')
+    SidebarView.postMessage({ command: 'switchTab', data: { tab: 'settings' } }, 'controlPanel')
   }
 
   static async showSync(): Promise<void> {
-    vscode.commands.executeCommand('metersphere.navigator.focus')
-    await vscode.commands.executeCommand('metersphere.sync.focus')
-    await SidebarView.loadProjectModules()
+    vscode.commands.executeCommand('metersphere.controlPanel.focus')
+    SidebarView.postMessage({ command: 'switchTab', data: { tab: 'sync' } }, 'controlPanel')
   }
 
   static async loadProjectModules(): Promise<void> {
@@ -114,9 +112,9 @@ export class SidebarView {
   }
 
   static sendFilesToSync(filePaths: string[]): void {
-    const syncView = SidebarView.views['sync']
-    if (syncView) {
-      syncView.webview.postMessage({
+    const cpView = SidebarView.views['controlPanel']
+    if (cpView) {
+      cpView.webview.postMessage({
         command: 'javaFilesSelected',
         files: filePaths,
       })
@@ -124,7 +122,7 @@ export class SidebarView {
   }
 
   static postMessage(msg: Record<string, unknown>, viewId?: string): void {
-    const targetId = viewId || 'sync'
+    const targetId = viewId || 'controlPanel'
     const view = SidebarView.views[targetId]
     if (view) {
       view.webview.postMessage(msg).catch(() => {})
@@ -168,15 +166,15 @@ export class SidebarView {
         break
 
       case 'loadEnvironments':
-        await SidebarView.loadEnvironments(viewId || 'environment')
+        await SidebarView.loadEnvironments('controlPanel')
         break
 
       case 'loadHistory':
-        SidebarView.loadHistory(viewId || 'history')
+        SidebarView.loadHistory('controlPanel')
         break
 
       case 'clearHistory':
-        SidebarView.clearHistory(viewId || 'history')
+        SidebarView.clearHistory('controlPanel')
         break
 
       case 'openInDebugger':
@@ -761,6 +759,432 @@ export class SidebarView {
       vscode.postMessage({ command: 'testConnection' });
     }
   </script>
+</body>
+</html>`
+  }
+
+  static getControlPanelHtml(): string {
+    const msUrl = SettingsManager.getMsUrl() ?? ''
+    const accessKey = SettingsManager.getAccessKey() ?? ''
+    const secretKey = SettingsManager.getSecretKey() ?? ''
+    const debugEnabled = SettingsManager.isDebugEnabled() ? 'checked' : ''
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+${SidebarView.getThemeStyles()}
+.tab-bar {
+  display: flex;
+  border-bottom: 1px solid var(--vscode-widget-border);
+  margin-bottom: 16px;
+  gap: 0;
+}
+.tab {
+  padding: 8px 14px;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: var(--vscode-editor-foreground);
+  font-size: 13px;
+  font-family: inherit;
+  border-bottom: 2px solid transparent;
+  opacity: 0.7;
+}
+.tab:hover {
+  background: var(--vscode-list-hoverBackground);
+  opacity: 1;
+}
+.tab.active {
+  border-bottom-color: var(--vscode-focusBorder);
+  opacity: 1;
+  font-weight: 600;
+}
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+.env-card {
+  border: 1px solid var(--vscode-widget-border, transparent);
+  border-radius: 4px;
+  padding: 10px;
+  margin-bottom: 8px;
+}
+.env-name { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+.env-detail { font-size: 12px; color: var(--vscode-descriptionForeground); margin: 2px 0; }
+.env-detail strong { color: var(--vscode-editor-foreground); }
+.toolbar { margin-bottom: 12px; }
+.btn-icon { padding: 2px 8px; font-size: 11px; }
+.history-item {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--vscode-widget-border, transparent);
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.history-item:hover { background: var(--vscode-list-hoverBackground); }
+.history-method {
+  font-weight: 600;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  min-width: 38px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.method-GET { background: var(--vscode-testing-iconPassedForeground, #4ec9b0); color: #fff; }
+.method-POST { background: var(--vscode-testing-iconFailedForeground, #f14c4c); color: #fff; }
+.method-PUT { background: var(--vscode-editorInfo-foreground, #3794ff); color: #fff; }
+.method-DELETE { background: var(--vscode-inputValidation-errorBorder, #f14c4c); color: #fff; }
+.method-PATCH { background: var(--vscode-editorWarning-foreground, #cc7a00); color: #fff; }
+.history-url {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--vscode-editor-foreground);
+}
+.history-status {
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  font-weight: 500;
+}
+.status-success { color: var(--vscode-testing-iconPassedForeground, #4ec9b0); }
+.status-fail { color: var(--vscode-testing-iconFailedForeground, #f14c4c); }
+.history-time {
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground);
+  flex-shrink: 0;
+}
+.no-history { padding: 20px; text-align: center; }
+.info {
+  border: 1px solid var(--vscode-textLink-foreground, #3794ff);
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+.warning {
+  border: 1px solid var(--vscode-list-warningForeground, #cc7a00);
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+.warning a { color: var(--vscode-textLink-foreground); text-decoration: none; }
+.warning a:hover { text-decoration: underline; }
+.file-list {
+  margin-bottom: 12px;
+  padding: 8px;
+  border: 1px solid var(--vscode-widget-border, transparent);
+  border-radius: 4px;
+}
+.file-list-item {
+  padding: 4px 8px;
+  margin: 4px 0;
+  border-radius: 2px;
+  font-size: 12px;
+}
+.status {
+  padding: 8px 12px;
+  border-radius: 4px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  border: 1px solid transparent;
+}
+.status.success {
+  border-color: var(--vscode-testing-iconPassedForeground, #4ec9b0);
+  color: var(--vscode-testing-iconPassedForeground, #4ec9b0);
+}
+.status.error {
+  border-color: var(--vscode-testing-iconFailedForeground, #f14c4c);
+  color: var(--vscode-testing-iconFailedForeground, #f14c4c);
+}
+.status.loading {
+  border-color: var(--vscode-textLink-foreground, #3794ff);
+  color: var(--vscode-textLink-foreground, #3794ff);
+}
+.uploadBtn:disabled { opacity: 0.5; cursor: default; }
+</style>
+</head>
+<body>
+<div class="tab-bar">
+  <button class="tab active" data-tab="sync" onclick="switchTab('sync')">Sync</button>
+  <button class="tab" data-tab="settings" onclick="switchTab('settings')">Settings</button>
+  <button class="tab" data-tab="environment" onclick="switchTab('environment')">Environment</button>
+  <button class="tab" data-tab="history" onclick="switchTab('history')">History</button>
+</div>
+
+<!-- Sync Tab -->
+<div id="tab-sync" class="tab-content active">
+  <h3>Sync to MeterSphere</h3>
+  <div class="info">
+    <p><strong>Export Java Spring Controllers to MeterSphere</strong></p>
+    <p>Select .java files with @RestController or @Controller annotations.</p>
+    <p>Project: <strong id="currentProject">Loading...</strong></p>
+  </div>
+  <div class="warning" id="javaExtWarning" style="display:none">
+    <p>For Javadoc support, install: <a href="#" onclick="openExt('redhat.java')">Language Support for Java</a></p>
+  </div>
+  <div class="form-group">
+    <label>Java Files</label>
+    <button class="btn-secondary" onclick="selectFiles()">Select Java Files</button>
+    <div class="file-list" id="fileList"><div style="font-style:italic">No files selected</div></div>
+  </div>
+  <label>Module (from Navigator)</label>
+  <select id="moduleSelect"><option value="">Select module...</option></select>
+  <label>Import Mode</label>
+  <select id="importMode">
+    <option value="incrementalMerge">Add New (incrementalMerge)</option>
+    <option value="fullCoverage">Overwrite (fullCoverage)</option>
+  </select>
+  <label>Context Path (optional)</label>
+  <input type="text" id="contextPath" placeholder="/api/v1">
+  <label>Export Name (optional)</label>
+  <input type="text" id="exportName" placeholder="Java APIs">
+  <div class="checkbox-label">
+    <input type="checkbox" id="syncCases" checked>
+    <label style="margin:0;font-weight:normal">Sync Test Cases</label>
+  </div>
+  <div id="status"></div>
+  <button class="btn-primary uploadBtn" id="uploadBtn" onclick="upload()">Upload to MeterSphere</button>
+</div>
+
+<!-- Settings Tab -->
+<div id="tab-settings" class="tab-content">
+  <h3>Settings</h3>
+  <form onsubmit="save(event)">
+    <div class="form-group">
+      <label>Server URL</label>
+      <input type="text" id="msUrl" value="${msUrl}" placeholder="http://localhost:8080">
+    </div>
+    <div class="form-group">
+      <label>Access Key</label>
+      <input type="text" id="accessKey" value="${accessKey}">
+    </div>
+    <div class="form-group">
+      <label>Secret Key</label>
+      <input type="password" id="secretKey" value="${secretKey}">
+    </div>
+    <div class="checkbox-label">
+      <input type="checkbox" id="debugEnabled" ${debugEnabled}>
+      <label style="margin: 0; font-weight: normal;">Enable Debug Logging</label>
+    </div>
+    <button type="button" class="btn-secondary" onclick="testConnection()">Test Connection</button>
+    <button type="submit" class="btn-primary">Save Settings</button>
+  </form>
+</div>
+
+<!-- Environment Tab -->
+<div id="tab-environment" class="tab-content">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+    <h3 style="margin:0;">Environment</h3>
+    <button class="btn-secondary btn-icon" onclick="refreshEnvs()">Refresh</button>
+  </div>
+  <div id="envContent"><p class="empty">Loading environments...</p></div>
+</div>
+
+<!-- History Tab -->
+<div id="tab-history" class="tab-content">
+  <div class="toolbar">
+    <h3 style="margin:0;">Request History</h3>
+    <button class="btn-danger btn-icon" onclick="clearHistory()">Clear</button>
+  </div>
+  <div id="historyContent"><p class="empty">Loading history...</p></div>
+</div>
+
+<script>
+const vscode = acquireVsCodeApi();
+let selectedFiles = [];
+let isScanning = false;
+let uploadEnabled = false;
+
+function switchTab(tabId) {
+  document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+  document.querySelectorAll('.tab-content').forEach(function(t) { t.classList.remove('active'); });
+  document.querySelector('[data-tab="' + tabId + '"]').classList.add('active');
+  document.getElementById('tab-' + tabId).classList.add('active');
+
+  if (tabId === 'sync') {
+    vscode.postMessage({ command: 'loadProjectData' });
+  } else if (tabId === 'environment') {
+    vscode.postMessage({ command: 'loadEnvironments' });
+  } else if (tabId === 'history') {
+    vscode.postMessage({ command: 'loadHistory' });
+  }
+}
+
+function timeAgo(ts) {
+  var diff = Date.now() - ts;
+  var seconds = Math.floor(diff / 1000);
+  if (seconds < 60) return seconds + 's ago';
+  var minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return minutes + 'm ago';
+  var hours = Math.floor(minutes / 60);
+  if (hours < 24) return hours + 'h ago';
+  var days = Math.floor(hours / 24);
+  return days + 'd ago';
+}
+
+function methodClass(method) {
+  return 'method-' + (method || 'GET').toUpperCase();
+}
+
+function setUploadEnabled(enabled) {
+  uploadEnabled = enabled;
+  var btn = document.getElementById('uploadBtn');
+  btn.disabled = !enabled;
+  btn.textContent = enabled ? 'Upload to MeterSphere' : (isScanning ? 'Scanning...' : 'Upload to MeterSphere');
+}
+
+function selectFiles() { vscode.postMessage({ command: 'selectJavaFiles' }); }
+function openExt(extId) { vscode.postMessage({ command: 'openExtension', data: extId }); }
+function testConnection() { vscode.postMessage({ command: 'testConnection' }); }
+
+function showStatus(message, type) {
+  document.getElementById('status').innerHTML = '<div class="status ' + type + '">' + message + '</div>';
+}
+
+function refreshEnvs() {
+  document.getElementById('envContent').innerHTML = '<p class="empty">Loading environments...</p>';
+  vscode.postMessage({ command: 'loadEnvironments' });
+}
+
+function clearHistory() {
+  if (confirm('Clear all request history?')) {
+    vscode.postMessage({ command: 'clearHistory' });
+  }
+}
+
+function upload() {
+  if (!uploadEnabled) return;
+  var moduleId = document.getElementById('moduleSelect').value;
+  if (!moduleId) { showStatus('Please select a module', 'error'); return; }
+  if (selectedFiles.length === 0) { showStatus('Please select at least one Java file', 'error'); return; }
+  vscode.postMessage({ command: 'uploadToMeterSphere', data: {
+    files: selectedFiles,
+    moduleId: moduleId,
+    mode: document.getElementById('importMode').value,
+    contextPath: document.getElementById('contextPath').value,
+    exportName: document.getElementById('exportName').value,
+    syncCase: document.getElementById('syncCases').checked,
+  }});
+}
+
+function save(event) {
+  event.preventDefault();
+  vscode.postMessage({ command: 'saveSettings', data: {
+    msUrl: document.getElementById('msUrl').value,
+    accessKey: document.getElementById('accessKey').value,
+    secretKey: document.getElementById('secretKey').value,
+    debugEnabled: document.getElementById('debugEnabled').checked
+  }});
+}
+
+function openInDebugger(method, url) {
+  vscode.postMessage({ command: 'openInDebugger', data: { method: method, url: url } });
+}
+
+window.addEventListener('message', function(event) {
+  var msg = event.data;
+
+  if (msg.command === 'switchTab' && msg.data && msg.data.tab) {
+    switchTab(msg.data.tab);
+    return;
+  }
+
+  if (msg.command === 'javaFilesSelected') {
+    selectedFiles = msg.files || [];
+    var fileList = document.getElementById('fileList');
+    fileList.innerHTML = selectedFiles.length === 0
+      ? '<div style="font-style:italic">No files selected</div>'
+      : selectedFiles.map(function(f) { return '<div class="file-list-item">' + f.split('/').pop() + '</div>'; }).join('');
+    if (selectedFiles.length > 0) uploadEnabled = true;
+    setUploadEnabled(uploadEnabled);
+  } else if (msg.command === 'scanningStarted') {
+    isScanning = true;
+    selectedFiles = [];
+    uploadEnabled = false;
+    document.getElementById('fileList').innerHTML = '<div style="font-style:italic">Scanning...</div>';
+    showStatus(msg.data?.message || 'Scanning...', 'loading');
+    setUploadEnabled(false);
+  } else if (msg.command === 'scanComplete') {
+    isScanning = false;
+    if (msg.data?.error) {
+      showStatus('Error: ' + (msg.data?.error || 'Unknown'), 'error');
+      selectedFiles = [];
+      uploadEnabled = false;
+      document.getElementById('fileList').innerHTML = '<div style="font-style:italic">No files selected</div>';
+    } else {
+      selectedFiles = msg.data?.files || [];
+      showStatus('Found ' + selectedFiles.length + ' Java files', 'success');
+      document.getElementById('fileList').innerHTML = selectedFiles.length === 0
+        ? '<div style="font-style:italic">No files selected</div>'
+        : selectedFiles.map(function(f) { return '<div class="file-list-item">' + f.split('/').pop() + '</div>'; }).join('');
+      uploadEnabled = selectedFiles.length > 0;
+    }
+    setUploadEnabled(uploadEnabled);
+  } else if (msg.command === 'projectLoaded') {
+    document.getElementById('currentProject').textContent = msg.name;
+    var select = document.getElementById('moduleSelect');
+    select.innerHTML = '<option value="">Select module...</option>' +
+      (msg.data?.modules || []).map(function(m) { return '<option value="' + m.id + '">' + m.name + '</option>'; }).join('');
+  } else if (msg.command === 'loadProjectError') {
+    document.getElementById('currentProject').textContent = 'Error';
+    showStatus(msg.data?.message || 'Failed to load project data', 'error');
+  } else if (msg.command === 'javaExtMissing') {
+    document.getElementById('javaExtWarning').style.display = 'block';
+  } else if (msg.command === 'uploadProgress') {
+    showStatus(msg.data?.message || '', 'loading');
+  } else if (msg.command === 'uploadSuccess') {
+    showStatus('Successfully uploaded ' + (msg.data?.count || 0) + ' APIs to MeterSphere!', 'success');
+  } else if (msg.command === 'uploadError') {
+    showStatus('Error: ' + (msg.data?.message || 'Unknown error'), 'error');
+  } else if (msg.command === 'environmentsLoaded') {
+    var envs = msg.data?.environments || [];
+    var container = document.getElementById('envContent');
+    if (envs.length === 0) {
+      container.innerHTML = '<p class="empty">No environments for this project.</p>';
+    } else {
+      container.innerHTML = envs.map(function(e) {
+        var details = '';
+        if (e.config) {
+          var c = e.config;
+          details += '<div class="env-detail"><strong>Config:</strong> ' + (c.protocol || 'HTTP') + '://' + (c.host || '-') + ':' + (c.port || '') + '</div>';
+        }
+        if (e.description) {
+          details += '<div class="env-detail">' + e.description + '</div>';
+        }
+        return '<div class="env-card"><div class="env-name">' + (e.name || 'Unnamed') + '</div>' + details + '</div>';
+      }).join('');
+    }
+  } else if (msg.command === 'environmentsError') {
+    document.getElementById('envContent').innerHTML = '<p class="empty" style="color:var(--vscode-errorForeground)">' + (msg.data?.message || 'Failed to load') + '</p>';
+  } else if (msg.command === 'historyLoaded') {
+    var history = msg.data?.history || [];
+    var container = document.getElementById('historyContent');
+    if (history.length === 0) {
+      container.innerHTML = '<div class="no-history"><p class="empty">No requests yet.</p><p style="font-size:11px;color:var(--vscode-descriptionForeground);margin-top:8px;">Send requests from the API Debugger panel to see them here.</p></div>';
+    } else {
+      container.innerHTML = history.map(function(item) {
+        var method = (item.method || 'GET').toUpperCase();
+        var statusClass = item.success ? 'status-success' : 'status-fail';
+        return '<div class="history-item" onclick="openInDebugger(\'' + method + '\', \'' + (item.url || '').replace(/'/g, "\\\\'") + '\')">' +
+          '<span class="history-method ' + methodClass(item.method) + '">' + method + '</span>' +
+          '<span class="history-url" title="' + (item.url || '') + '">' + (item.url || '') + '</span>' +
+          '<span class="history-status ' + statusClass + '">' + (item.status || '-') + '</span>' +
+          '<span class="history-time">' + timeAgo(item.timestamp) + '</span>' +
+          '</div>';
+      }).join('');
+    }
+  } else if (msg.command === 'historyError') {
+    document.getElementById('historyContent').innerHTML = '<p class="empty" style="color:var(--vscode-errorForeground)">' + (msg.data?.message || 'Failed to load history') + '</p>';
+  }
+});
+</script>
 </body>
 </html>`
   }

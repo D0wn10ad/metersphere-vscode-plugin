@@ -11,53 +11,20 @@ import { ContextHolder } from './contextHolder'
 import { DebugLogger } from './debugLogger'
 import { SidebarView } from './views/sidebarView'
 
-class EnvironmentViewProvider implements vscode.WebviewViewProvider {
+class ControlPanelViewProvider implements vscode.WebviewViewProvider {
   resolveWebviewView(webviewView: vscode.WebviewView): void {
     webviewView.webview.options = { enableScripts: true }
-    webviewView.webview.html = SidebarView.getEnvironmentHtml()
-    webviewView.webview.onDidReceiveMessage(msg => SidebarView.handleMessage(msg, 'environment'))
-    SidebarView.registerView('environment', webviewView)
-    webviewView.onDidDispose(() => SidebarView.unregisterView('environment'))
-  }
-}
-
-class HistoryViewProvider implements vscode.WebviewViewProvider {
-  resolveWebviewView(webviewView: vscode.WebviewView): void {
-    webviewView.webview.options = { enableScripts: true }
-    webviewView.webview.html = SidebarView.getHistoryHtml()
-    webviewView.webview.onDidReceiveMessage(msg => SidebarView.handleMessage(msg, 'history'))
-    SidebarView.registerView('history', webviewView)
-    webviewView.onDidDispose(() => SidebarView.unregisterView('history'))
-  }
-}
-
-class SyncViewProvider implements vscode.WebviewViewProvider {
-  resolveWebviewView(webviewView: vscode.WebviewView): void {
-    webviewView.webview.options = { enableScripts: true }
-    webviewView.webview.html = SidebarView.getSyncHtml()
-    webviewView.webview.onDidReceiveMessage(msg => SidebarView.handleMessage(msg, 'sync'))
-    SidebarView.registerView('sync', webviewView)
-    webviewView.onDidDispose(() => SidebarView.unregisterView('sync'))
-  }
-}
-
-class SettingsViewProvider implements vscode.WebviewViewProvider {
-  resolveWebviewView(webviewView: vscode.WebviewView): void {
-    webviewView.webview.options = { enableScripts: true }
-    webviewView.webview.html = SidebarView.getSettingsHtml()
-    webviewView.webview.onDidReceiveMessage(msg => SidebarView.handleMessage(msg, 'settings'))
-    SidebarView.registerView('settings', webviewView)
-    webviewView.onDidDispose(() => SidebarView.unregisterView('settings'))
+    webviewView.webview.html = SidebarView.getControlPanelHtml()
+    webviewView.webview.onDidReceiveMessage(msg => SidebarView.handleMessage(msg, 'controlPanel'))
+    SidebarView.registerView('controlPanel', webviewView)
+    webviewView.onDidDispose(() => SidebarView.unregisterView('controlPanel'))
   }
 }
 
 export function activate(context: vscode.ExtensionContext): void {
   ContextHolder.setContext(context)
 
-  context.subscriptions.push(vscode.window.registerWebviewViewProvider('metersphere.environment', new EnvironmentViewProvider()))
-  context.subscriptions.push(vscode.window.registerWebviewViewProvider('metersphere.history', new HistoryViewProvider()))
-  context.subscriptions.push(vscode.window.registerWebviewViewProvider('metersphere.sync', new SyncViewProvider()))
-  context.subscriptions.push(vscode.window.registerWebviewViewProvider('metersphere.settings', new SettingsViewProvider()))
+  context.subscriptions.push(vscode.window.registerWebviewViewProvider('metersphere.controlPanel', new ControlPanelViewProvider()))
 
   const wvc = new WebViewController(context)
   context.subscriptions.push(
