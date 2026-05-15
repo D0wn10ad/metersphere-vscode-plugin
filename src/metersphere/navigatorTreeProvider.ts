@@ -59,8 +59,16 @@ export class NavigatorTreeDataProvider implements vscode.TreeDataProvider<Naviga
         return []
       }
     }
-    if (element.type === NodeType.MODULE) {
-      return []  // TODO: fetch API list
+    if (element.type === NodeType.MODULE && this.fetchFn) {
+      const projectId = element.projectId
+      if (!projectId) return []
+      DebugLogger.log('TreeProvider', 'Expanding module', { moduleId: element.id, moduleName: element.name, projectId })
+      try {
+        return await NavigatorEngine.discoverApis(projectId, this.fetchFn, element.id)
+      } catch (error) {
+        DebugLogger.error('TreeProvider', 'Failed to expand module', error)
+        return []
+      }
     }
     return element.getChildren()
   }

@@ -21,6 +21,16 @@ interface MsModule {
   projectId?: string
 }
 
+interface MsApiDefinition {
+  id: string
+  name: string
+  path: string
+  method: string
+  moduleId?: string
+  projectId?: string
+  description?: string
+}
+
 export class NavigatorEngine {
   private static workspaceCache: NavigatorNode[] | null = null
 
@@ -126,9 +136,42 @@ export class NavigatorEngine {
         name: mod.name,
         type: NodeType.MODULE,
         parentId: mod.parentId,
+        projectId: mod.projectId || projectId,
       }))
     } catch (error) {
       DebugLogger.error('Navigator', 'Failed to discover modules', error)
+      return []
+    }
+  }
+
+  static async discoverApis(
+    projectId: string,
+    fetchFn: (method: string, url: string, headers: Record<string, string>, body?: unknown) => Promise<HttpResponse>,
+    moduleId?: string
+  ): Promise<NavigatorNode[]> {
+    const baseUrl = NavigatorEngine.getBaseUrl()
+    const headers = NavigatorEngine.buildAuthHeaders('application/json')
+    const url = `${baseUrl}/api/api/definition/list`
+    const body: Record<string, unknown> = { projectId, protocol: 'HTTP' }
+    if (moduleId) body.moduleId = moduleId
+
+    DebugLogger.log('Navigator', 'Discovering APIs', { projectId, moduleId, url })
+
+    try {
+      const resp = await fetchFn('POST', url, headers, body)
+      DebugLogger.log('Navigator', 'APIs response', { status: resp.status })
+
+      const data = (resp.body as { data: MsApiDefinition[] }).data ?? []
+      return data.map(api => new NavigatorNode({
+        id: api.id,
+        name: `[${api.method}] ${api.path}`,
+        type: NodeType.API,
+        parentId: moduleId || projectId,
+        projectId,
+        tooltip: api.description || api.name,
+      }))
+    } catch (error) {
+      DebugLogger.error('Navigator', 'Failed to discover APIs', error)
       return []
     }
   }

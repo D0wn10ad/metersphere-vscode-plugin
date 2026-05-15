@@ -9,6 +9,20 @@ describe('NavigatorEngine', () => {
     if (url.includes('/project/list')) {
       return { status: 200, body: { data: [{ id: 'proj-1', name: 'Test Project', workspaceId: 'ws-1' }] } }
     }
+    if (url.includes('/module/list')) {
+      return { status: 200, body: { data: [{ id: 'mod-1', name: 'User Module', parentId: 'proj-1' }] } }
+    }
+    if (url.includes('/definition/list')) {
+      return {
+        status: 200,
+        body: {
+          data: [
+            { id: 'api-1', name: 'Get Users', path: '/api/users', method: 'GET', moduleId: 'mod-1', projectId: 'proj-1' },
+            { id: 'api-2', name: 'Create User', path: '/api/users/create', method: 'POST', moduleId: 'mod-1', projectId: 'proj-1', description: 'Creates a new user' },
+          ]
+        }
+      }
+    }
     return { status: 200, body: { data: [] } }
   }
 
@@ -35,5 +49,36 @@ describe('NavigatorEngine', () => {
   test('cache is used on second call', async () => {
     NavigatorEngine.discoverWorkspaces(mockHttpRequest as any)
     NavigatorEngine.discoverWorkspaces(mockHttpRequest as any)
+  })
+
+  test('discovers modules with projectId', async () => {
+    const nodes = await NavigatorEngine.discoverModules('proj-1', mockHttpRequest as any)
+    expect(nodes.length).toBe(1)
+    expect(nodes[0].type).toBe(NodeType.MODULE)
+    expect(nodes[0].name).toBe('User Module')
+    expect(nodes[0].projectId).toBe('proj-1')
+  })
+
+  test('discovers APIs under a module', async () => {
+    const nodes = await NavigatorEngine.discoverApis('proj-1', mockHttpRequest as any, 'mod-1')
+    expect(nodes.length).toBe(2)
+    expect(nodes[0].type).toBe(NodeType.API)
+    expect(nodes[0].name).toBe('[GET] /api/users')
+    expect(nodes[0].parentId).toBe('mod-1')
+    expect(nodes[0].projectId).toBe('proj-1')
+    expect(nodes[1].name).toBe('[POST] /api/users/create')
+    expect(nodes[1].tooltip).toBe('Creates a new user')
+  })
+
+  test('discovers APIs for entire project without moduleId', async () => {
+    const nodes = await NavigatorEngine.discoverApis('proj-1', mockHttpRequest as any)
+    expect(nodes.length).toBe(2)
+    expect(nodes[0].parentId).toBe('proj-1')
+  })
+
+  test('discoverApis returns empty on API error', async () => {
+    const failFn = async () => { throw new Error('Network error') }
+    const nodes = await NavigatorEngine.discoverApis('proj-1', failFn as any, 'mod-1')
+    expect(nodes).toEqual([])
   })
 })

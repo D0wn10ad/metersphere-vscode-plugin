@@ -18,11 +18,15 @@ export class SidebarView {
   }
 
   static showEnvironment(): void {
+    vscode.commands.executeCommand('metersphere.navigator.focus')
     vscode.commands.executeCommand('metersphere.environment.focus')
+    vscode.commands.executeCommand('metersphere.showDebugger')
   }
 
   static showHistory(): void {
+    vscode.commands.executeCommand('metersphere.navigator.focus')
     vscode.commands.executeCommand('metersphere.history.focus')
+    vscode.commands.executeCommand('metersphere.showDebugger')
   }
 
   static showSettings(): void {
@@ -30,6 +34,7 @@ export class SidebarView {
   }
 
   static async showSync(): Promise<void> {
+    vscode.commands.executeCommand('metersphere.navigator.focus')
     await vscode.commands.executeCommand('metersphere.sync.focus')
     await SidebarView.loadProjectModules()
   }

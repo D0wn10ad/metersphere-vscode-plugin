@@ -14,6 +14,7 @@ export interface NavigatorNodeOptions {
   name: string
   type: NodeType
   parentId?: string
+  projectId?: string
   iconPath?: string
   tooltip?: string
   uri?: { fsPath: string }
@@ -25,6 +26,7 @@ export class NavigatorNode {
   public readonly name: string
   public readonly type: NodeType
   public readonly parentId?: string
+  public readonly projectId?: string
   public readonly iconPath?: string
   public readonly tooltip?: string
   public readonly uri?: { fsPath: string }
@@ -37,6 +39,7 @@ export class NavigatorNode {
     this.name = options.name
     this.type = options.type
     this.parentId = options.parentId
+    this.projectId = options.projectId
     this.iconPath = options.iconPath
     this.tooltip = options.tooltip
     this.uri = options.uri
