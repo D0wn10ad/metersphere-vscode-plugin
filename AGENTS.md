@@ -171,7 +171,7 @@ After design and planning, choose one:
 | Phase 4 | ✅ Complete | Context menus, Settings enhancements, testConnection, syncCases, Responsive Sync |
 | Phase 4 Enhancement | ✅ Complete | FilesExplorer inline button, scan scope dialog, scanning state UI, parallel module selection |
 | Phase 5 | ✅ Complete | API Debugger (1:1 with IDEA plugin) |
-| Sidebar Migration | ✅ Complete | 4 separate webviews merged into single Control Panel with tab switching |
+| Sidebar Migration | ✅ Complete | 4 separate webviews merged into single Control Panel; tab-bar replaced with accordion panels |
 | API Endpoints in Navigator | ✅ Complete | API definitions shown under modules in tree |
 
 NOTE on phases:
