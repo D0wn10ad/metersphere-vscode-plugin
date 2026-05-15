@@ -930,7 +930,6 @@ ${SidebarView.getThemeStyles()}
     <span class="accordion-arrow expanded">▶</span>
   </div>
   <div id="panel-sync" class="panel-content expanded">
-  <h3>Sync to MeterSphere</h3>
   <div class="info" style="padding:8px 12px;margin-bottom:12px;font-size:12px;">
     <strong>Export Java Controllers</strong> &mdash; Project: <strong id="currentProject">Loading...</strong>
   </div>
@@ -967,7 +966,6 @@ ${SidebarView.getThemeStyles()}
     <span class="accordion-arrow">▶</span>
   </div>
   <div id="panel-settings" class="panel-content">
-  <h3>Settings</h3>
   <form id="settingsForm">
     <div class="form-group">
       <label>Server URL</label>
@@ -996,10 +994,7 @@ ${SidebarView.getThemeStyles()}
     <span class="accordion-arrow">▶</span>
   </div>
   <div id="panel-environment" class="panel-content">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-    <h3 style="margin:0;">Environment</h3>
-    <button class="btn-secondary btn-icon" id="refreshEnvsBtn">Refresh</button>
-  </div>
+  <button class="btn-secondary btn-icon" id="refreshEnvsBtn" style="margin-bottom:12px;">Refresh</button>
   <div id="envContent"><p class="empty">Loading environments...</p></div>
   </div>
 </div>
@@ -1009,10 +1004,7 @@ ${SidebarView.getThemeStyles()}
     <span class="accordion-arrow">▶</span>
   </div>
   <div id="panel-history" class="panel-content">
-  <div class="toolbar">
-    <h3 style="margin:0;">Request History</h3>
-    <button class="btn-danger btn-icon" id="clearHistoryBtn">Clear</button>
-  </div>
+  <button class="btn-danger btn-icon" id="clearHistoryBtn" style="margin-bottom:12px;">Clear</button>
   <div id="historyContent"><p class="empty">Loading history...</p></div>
   </div>
 </div>
@@ -1026,7 +1018,7 @@ let uploadEnabled = false;
 // Wire up event listeners after DOM is ready
 (function() {
   document.querySelectorAll('.panel-header').forEach(function(t) {
-    t.addEventListener('click', function() { togglePanel(this.dataset.panel); });
+    t.addEventListener('click', function() { togglePanel(this.dataset.panel, false); });
   });
   document.getElementById('uploadBtn').addEventListener('click', upload);
   document.getElementById('selectFilesBtn').addEventListener('click', function() { vscode.postMessage({ command: 'selectJavaFiles' }); });
@@ -1044,25 +1036,27 @@ let uploadEnabled = false;
   });
 })();
 
-function togglePanel(panelId) {
+function togglePanel(panelId, force) {
   var content = document.getElementById('panel-' + panelId);
 
-  if (content.classList.contains('expanded')) {
+  if (!force && content.classList.contains('expanded')) {
     content.classList.remove('expanded');
     content.parentElement.querySelector('.panel-header').classList.remove('active');
     content.parentElement.querySelector('.accordion-arrow').classList.remove('expanded');
     return;
   }
 
-  document.querySelectorAll('.panel-content.expanded').forEach(function(p) {
-    p.classList.remove('expanded');
-    p.parentElement.querySelector('.panel-header').classList.remove('active');
-    p.parentElement.querySelector('.accordion-arrow').classList.remove('expanded');
-  });
+  if (!content.classList.contains('expanded')) {
+    document.querySelectorAll('.panel-content.expanded').forEach(function(p) {
+      p.classList.remove('expanded');
+      p.parentElement.querySelector('.panel-header').classList.remove('active');
+      p.parentElement.querySelector('.accordion-arrow').classList.remove('expanded');
+    });
 
-  content.classList.add('expanded');
-  content.parentElement.querySelector('.panel-header').classList.add('active');
-  content.parentElement.querySelector('.accordion-arrow').classList.add('expanded');
+    content.classList.add('expanded');
+    content.parentElement.querySelector('.panel-header').classList.add('active');
+    content.parentElement.querySelector('.accordion-arrow').classList.add('expanded');
+  }
 
   if (panelId === 'sync') {
     vscode.postMessage({ command: 'loadProjectData' });
@@ -1144,7 +1138,7 @@ window.addEventListener('message', function(event) {
   var msg = event.data;
 
   if (msg.command === 'switchTab' && msg.data && msg.data.tab) {
-    togglePanel(msg.data.tab);
+    togglePanel(msg.data.tab, true);
     return;
   }
 
