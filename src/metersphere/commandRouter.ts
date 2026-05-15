@@ -188,9 +188,14 @@ export class CommandRouter {
       })
     )
 
+    let debuggerController: WebViewController | undefined
+
     context.subscriptions.push(
       vscode.commands.registerCommand('metersphere.showDebugger', () => {
-        new WebViewController(context).open()
+        if (!debuggerController) {
+          debuggerController = new WebViewController(context)
+        }
+        debuggerController.open()
       })
     )
 
