@@ -170,10 +170,12 @@ After design and planning, choose one:
 | Phase 3C | ✅ Stub Complete | DebugLogger only (telemetry deprecated) |
 | Phase 4 | ✅ Complete | Context menus, Settings enhancements, testConnection, syncCases, Responsive Sync |
 | Phase 4 Enhancement | ✅ Complete | FilesExplorer inline button, scan scope dialog, scanning state UI, parallel module selection |
-| Phase 5 | 🔴 Not started | API Debugger (1:1 with IDEA plugin) |
+| Phase 5 | ✅ Complete | API Debugger (1:1 with IDEA plugin) |
+| Sidebar Migration | ✅ Complete | 4 separate webviews merged into single Control Panel with tab switching |
+| API Endpoints in Navigator | ✅ Complete | API definitions shown under modules in tree |
 
 NOTE on phases:
-- Phase 3A "Complete" marked as Stub because: getEnvironmentHtml() and getHistoryHtml() are stubs only
+- Phase 3A "Complete" marked as Stub because: getEnvironmentHtml() and getHistoryHtml() were initially stubs (now populated with real data in Sidebar Migration)
 - Phase 3C "Complete" marked as Stub because: telemetryEngine was deprecated, only DebugLogger exists
 - Phase 4 includes: Editor/File Explorer context menus, Settings UI with testConnection, exportName field, syncCases checkbox
 - Phase 4 Enhancement includes: Inline sync button, right-click sync improvements, responsive scanning UI
