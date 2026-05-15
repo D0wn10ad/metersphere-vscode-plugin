@@ -8,9 +8,15 @@ import { ContextHolder } from '../contextHolder'
 
 export class SidebarView {
   private static views: Record<string, vscode.WebviewView> = {}
+  private static pendingMessages: Record<string, Record<string, unknown>[]> = {}
 
   static registerView(id: string, view: vscode.WebviewView): void {
     SidebarView.views[id] = view
+    const pending = SidebarView.pendingMessages[id]
+    if (pending) {
+      pending.forEach(msg => view.webview.postMessage(msg).catch(() => {}))
+      delete SidebarView.pendingMessages[id]
+    }
   }
 
   static unregisterView(id: string): void {
@@ -126,6 +132,11 @@ export class SidebarView {
     const view = SidebarView.views[targetId]
     if (view) {
       view.webview.postMessage(msg).catch(() => {})
+    } else {
+      if (!SidebarView.pendingMessages[targetId]) {
+        SidebarView.pendingMessages[targetId] = []
+      }
+      SidebarView.pendingMessages[targetId].push(msg)
     }
   }
 
