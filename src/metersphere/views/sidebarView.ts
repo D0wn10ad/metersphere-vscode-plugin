@@ -9,6 +9,7 @@ import { ContextHolder } from '../contextHolder'
 export class SidebarView {
   private static views: Record<string, vscode.WebviewView> = {}
   private static pendingMessages: Record<string, Record<string, unknown>[]> = {}
+  private static isUploading = false
 
   static registerView(id: string, view: vscode.WebviewView): void {
     SidebarView.views[id] = view
@@ -199,6 +200,11 @@ export class SidebarView {
   }
 
   private static async handleUpload(uploadData: any): Promise<void> {
+    if (SidebarView.isUploading) {
+      DebugLogger.log('Sync', 'Upload already in progress, skipping duplicate')
+      return
+    }
+    SidebarView.isUploading = true
     SidebarView.postMessage({ command: 'uploadProgress', data: { message: 'Parsing Java files...' } })
     
     try {
@@ -414,6 +420,8 @@ export class SidebarView {
     } catch (error) {
       DebugLogger.error('Sync', 'Upload failed', error)
       SidebarView.postMessage({ command: 'uploadError', data: { message: `Error: ${error instanceof Error ? error.message : String(error)}` } })
+    } finally {
+      SidebarView.isUploading = false
     }
   }
 

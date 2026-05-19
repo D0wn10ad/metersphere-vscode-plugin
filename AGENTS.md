@@ -165,7 +165,7 @@ After design and planning, choose one:
 |-------|--------|-------|
 | Phase 1 MVP1 | ✅ Complete | TokenManager, HttpClient, SettingsManager, WebView scaffold, Jest wired |
 | Phase 2 | ✅ Complete | Navigator, TreeView, on-demand sync |
-| Phase 3A | ✅ Stub Complete | WebView scaffold, Sync upload (stubs for Environment/History) |
+| Phase 3A | ✅ Complete | WebView scaffold, Sync upload, Environment/History panels (populated during Sidebar Migration) |
 | Phase 3B | ✅ Complete | Mocks, Test Data |
 | Phase 3C | ✅ Stub Complete | DebugLogger only (telemetry deprecated) |
 | Phase 4 | ✅ Complete | Context menus, Settings enhancements, testConnection, syncCases, Responsive Sync |
@@ -173,9 +173,10 @@ After design and planning, choose one:
 | Phase 5 | ✅ Complete | API Debugger (1:1 with IDEA plugin) |
 | Sidebar Migration | ✅ Complete | 4 separate webviews merged into single Control Panel; tab-bar replaced with accordion panels |
 | API Endpoints in Navigator | ✅ Complete | API definitions shown under modules in tree |
+| Debugger Polish & Sidebar Integration | ✅ Complete | VSCode theme CSS variables in debugger; inline History removed (sidebar-only); onclick→addEventListener cleanup; message queuing; upload duplication guard |
 
 NOTE on phases:
-- Phase 3A "Complete" marked as Stub because: getEnvironmentHtml() and getHistoryHtml() were initially stubs (now populated with real data in Sidebar Migration)
+- Phase 3A was initially Stub because getEnvironmentHtml() and getHistoryHtml() were stubs (populated with real data during Sidebar Migration; now fully Complete)
 - Phase 3C "Complete" marked as Stub because: telemetryEngine was deprecated, only DebugLogger exists
 - Phase 4 includes: Editor/File Explorer context menus, Settings UI with testConnection, exportName field, syncCases checkbox
 - Phase 4 Enhancement includes: Inline sync button, right-click sync improvements, responsive scanning UI

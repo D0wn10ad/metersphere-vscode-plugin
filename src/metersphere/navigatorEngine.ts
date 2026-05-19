@@ -151,9 +151,9 @@ export class NavigatorEngine {
   ): Promise<NavigatorNode[]> {
     const baseUrl = NavigatorEngine.getBaseUrl()
     const headers = NavigatorEngine.buildAuthHeaders('application/json')
-    const url = `${baseUrl}/api/api/definition/list`
+    const url = `${baseUrl}/api/api/definition/list/all`
     const body: Record<string, unknown> = { projectId, protocol: 'HTTP' }
-    if (moduleId) body.moduleId = moduleId
+    if (moduleId) body.moduleIds = [moduleId]
 
     DebugLogger.log('Navigator', 'Discovering APIs', { projectId, moduleId, url })
 

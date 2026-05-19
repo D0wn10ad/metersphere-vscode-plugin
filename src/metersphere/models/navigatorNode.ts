@@ -44,7 +44,7 @@ export class NavigatorNode {
     this.tooltip = options.tooltip
     this.uri = options.uri
     this.contextValue = options.contextValue ?? options.type
-    if (options.type === NodeType.FOLDER || options.type === NodeType.PROJECT || options.type === NodeType.WORKSPACE) {
+    if (options.type === NodeType.FOLDER || options.type === NodeType.PROJECT || options.type === NodeType.WORKSPACE || options.type === NodeType.MODULE) {
       this.collapsibleState = 1 // Collapsed
     }
   }

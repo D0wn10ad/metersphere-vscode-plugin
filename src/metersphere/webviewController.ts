@@ -88,12 +88,6 @@ export class WebViewController {
             } 
           })
         }
-      } else if (command === 'loadHistory') {
-        const history = this.context.workspaceState.get<HistoryItem[]>('debuggerHistory', [])
-        this.panel.webview.postMessage({ command: 'historyLoaded', payload: history })
-      } else if (command === 'clearHistory') {
-        await this.context.workspaceState.update('debuggerHistory', [])
-        this.panel.webview.postMessage({ command: 'historyLoaded', payload: [] })
       } else if (command === 'setAccessKey') {
         SettingsManager.setAccessKey(payload as string)
       } else if (command === 'setSecretKey') {
@@ -135,29 +129,28 @@ export class WebViewController {
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { 
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
       padding: 16px; 
       margin: 0; 
-      background: #f5f5f5;
       height: 100vh;
       display: flex;
       flex-direction: column;
     }
-    h3 { margin: 0 0 16px 0; color: #333; }
+    h3 { margin: 0 0 16px 0; font-weight: 600; font-size: 14px; }
     .container { display: flex; gap: 16px; flex: 1; overflow: hidden; }
     .left-panel { flex: 1; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
     .right-panel { flex: 1; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
     .form-group { display: flex; flex-direction: column; gap: 4px; }
-    label { font-weight: 500; font-size: 13px; color: #555; }
+    label { font-weight: 500; font-size: 13px; }
     input[type="text"], select, textarea { 
       width: 100%; 
       padding: 8px; 
-      border: 1px solid #ccc; 
+      border: 1px solid var(--vscode-input-border, transparent); 
       border-radius: 4px; 
       font-size: 13px;
-      font-family: 'Monaco', 'Menlo', monospace;
+      background: var(--vscode-input-background);
+      color: var(--vscode-input-foreground);
     }
-    textarea { min-height: 120px; resize: vertical; }
+    textarea { min-height: 120px; resize: vertical; font-family: 'Monaco', 'Menlo', monospace; }
     .header-row { display: flex; gap: 8px; }
     .header-row select { width: 120px; }
     .header-row input { flex: 1; }
@@ -168,22 +161,24 @@ export class WebViewController {
       border-radius: 4px; 
       font-weight: 500; 
       font-size: 13px;
+      font-family: inherit;
     }
-    .btn-primary { background: #007acc; color: white; }
-    .btn-primary:hover { background: #0062a3; }
-    .btn-secondary { background: #6c757d; color: white; }
-    .btn-secondary:hover { background: #545b62; }
-    .btn-danger { background: #dc3545; color: white; }
-    .btn-danger:hover { background: #c82333; }
+    .btn-primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+    .btn-primary:hover { background: var(--vscode-button-hoverBackground); }
+    .btn-secondary { background: var(--vscode-button-secondaryBackground, var(--vscode-button-background)); color: var(--vscode-button-secondaryForeground, var(--vscode-button-foreground)); }
+    .btn-secondary:hover { background: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-hoverBackground)); }
+    .btn-danger { background: transparent; color: var(--vscode-errorForeground, #e06c75); border: 1px solid var(--vscode-errorForeground, #e06c75); }
+    .btn-danger:hover { opacity: 0.8; }
     .response-box { 
-      background: white; 
-      border: 1px solid #ccc; 
+      background: var(--vscode-input-background); 
+      border: 1px solid var(--vscode-input-border, transparent); 
       border-radius: 4px; 
       padding: 12px; 
       flex: 1; 
       overflow: auto;
       font-family: 'Monaco', 'Menlo', monospace;
       font-size: 12px;
+      color: var(--vscode-editor-foreground);
     }
     .status-badge { 
       display: inline-block; 
@@ -191,33 +186,33 @@ export class WebViewController {
       border-radius: 3px; 
       font-size: 12px; 
       font-weight: 500;
+      color: #fff;
     }
-    .status-2xx { background: #d4edda; color: #155724; }
-    .status-4xx { background: #f8d7da; color: #721c24; }
-    .status-5xx { background: #fff3cd; color: #856404; }
-    .status-error { background: #f8d7da; color: #721c24; }
+    .status-2xx { background: var(--vscode-testing-iconPassedForeground, #4ec9b0); }
+    .status-4xx { background: var(--vscode-testing-iconFailedForeground, #f14c4c); }
+    .status-5xx { background: var(--vscode-editorWarning-foreground, #cc7a00); }
+    .status-error { background: var(--vscode-testing-iconFailedForeground, #f14c4c); }
     .history-item { 
       padding: 8px 12px; 
-      border-bottom: 1px solid #eee; 
+      border-bottom: 1px solid var(--vscode-widget-border, transparent); 
       cursor: pointer;
       font-size: 12px;
     }
-    .history-item:hover { background: #f5f5f5; }
+    .history-item:hover { background: var(--vscode-list-hoverBackground); }
     .history-method { font-weight: 500; margin-right: 8px; }
-    .history-url { color: #666; }
+    .history-url { color: var(--vscode-descriptionForeground); }
     .section-title { 
       font-size: 14px; 
       font-weight: 600; 
       margin: 0 0 8px 0; 
-      color: #333;
     }
     .headers-editor { display: flex; flex-direction: column; gap: 8px; }
     .header-row-item { display: flex; gap: 8px; align-items: center; }
     .header-row-item input { flex: 1; }
     .header-row-item button { 
-      background: #dc3545; 
-      color: white; 
-      border: none; 
+      background: transparent; 
+      color: var(--vscode-errorForeground, #e06c75); 
+      border: 1px solid var(--vscode-errorForeground, #e06c75); 
       border-radius: 3px; 
       padding: 4px 8px; 
       cursor: pointer;
@@ -252,10 +247,10 @@ export class WebViewController {
           <div class="header-row-item">
             <input type="text" placeholder="Header name" value="Content-Type">
             <input type="text" placeholder="Value" value="application/json">
-            <button onclick="removeHeader(this)">×</button>
+            <button class="remove-header-btn">×</button>
           </div>
         </div>
-        <button class="btn-secondary" onclick="addHeader()" style="margin-top: 4px;">+ Add Header</button>
+        <button class="btn-secondary" id="addHeaderBtn" style="margin-top: 4px;">+ Add Header</button>
       </div>
       
       <div class="form-group">
@@ -264,12 +259,9 @@ export class WebViewController {
       </div>
       
       <div>
-        <button class="btn-primary" onclick="sendRequest()">Send Request</button>
+        <button class="btn-primary" id="sendRequestBtn">Send Request</button>
       </div>
       
-      <div class="section-title">History</div>
-      <div id="historyList" style="max-height: 200px; overflow-y: auto;"></div>
-      <button class="btn-danger" onclick="clearHistory()" style="margin-top: 8px;">Clear History</button>
     </div>
     
     <!-- Right Panel: Response -->
@@ -289,25 +281,30 @@ export class WebViewController {
   
   <script>
     const vscode = acquireVsCodeApi();
-    let requestCount = 0;
+    
+    (function() {
+      document.getElementById('addHeaderBtn').addEventListener('click', addHeader);
+      document.getElementById('sendRequestBtn').addEventListener('click', sendRequest);
+      document.getElementById('headersEditor').addEventListener('click', function(e) {
+        if (e.target.classList.contains('remove-header-btn')) {
+          e.target.parentElement.remove();
+        }
+      });
+    })();
     
     function addHeader() {
       const editor = document.getElementById('headersEditor');
       const div = document.createElement('div');
       div.className = 'header-row-item';
-      div.innerHTML = '<input type="text" placeholder="Header name"><input type="text" placeholder="Value"><button onclick="removeHeader(this)">×</button>';
+      div.innerHTML = '<input type="text" placeholder="Header name"><input type="text" placeholder="Value"><button class="remove-header-btn">×</button>';
       editor.appendChild(div);
-    }
-    
-    function removeHeader(btn) {
-      btn.parentElement.remove();
     }
     
     function getHeaders() {
       const editor = document.getElementById('headersEditor');
       const headers = {};
       const items = editor.querySelectorAll('.header-row-item');
-      items.forEach(item => {
+      items.forEach(function(item) {
         const inputs = item.querySelectorAll('input');
         if (inputs[0].value) {
           headers[inputs[0].value] = inputs[1].value;
@@ -333,41 +330,11 @@ export class WebViewController {
       
       vscode.postMessage({
         command: 'sendRequest',
-        payload: { method, url, headers, body }
+        payload: { method: method, url: url, headers: headers, body: body }
       });
     }
     
-    function clearHistory() {
-      if (confirm('Clear all history?')) {
-        vscode.postMessage({ command: 'clearHistory' });
-      }
-    }
-    
-    function loadHistory() {
-      vscode.postMessage({ command: 'loadHistory' });
-    }
-    
-    function renderHistory(history) {
-      const list = document.getElementById('historyList');
-      list.innerHTML = '';
-      history.forEach((item, idx) => {
-        const div = document.createElement('div');
-        div.className = 'history-item';
-        const statusClass = item.status >= 200 && item.status < 300 ? 'status-2xx' : 
-                          item.status >= 400 && item.status < 500 ? 'status-4xx' : 
-                          item.status >= 500 ? 'status-5xx' : 'status-error';
-        const statusBadge = item.status ? '<span class="status-badge ' + statusClass + '">' + item.status + '</span> ' : '';
-        div.innerHTML = statusBadge + '<span class="history-method">' + item.method + '</span>' + 
-                      '<span class="history-url">' + item.url + '</span>';
-        div.onclick = () => {
-          document.getElementById('methodSelect').value = item.method;
-          document.getElementById('urlInput').value = item.url;
-        };
-        list.appendChild(div);
-      });
-    }
-    
-    window.addEventListener('message', event => {
+    window.addEventListener('message', function(event) {
       const msg = event.data;
       if (msg.command === 'response') {
         const resp = msg.payload;
@@ -384,13 +351,8 @@ export class WebViewController {
                             resp.status >= 500 ? 'status-5xx' : 'status-error';
           statusDiv.innerHTML = '<span class="status-badge ' + statusClass + '">' + resp.status + ' ' + (resp.statusText || '') + '</span>';
         }
-      } else if (msg.command === 'historyLoaded') {
-        renderHistory(msg.payload || []);
       }
     });
-    
-    // Load history on startup
-    loadHistory();
   </script>
 </body>
 </html>`

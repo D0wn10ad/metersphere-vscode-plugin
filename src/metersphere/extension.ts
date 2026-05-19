@@ -12,12 +12,18 @@ import { DebugLogger } from './debugLogger'
 import { SidebarView } from './views/sidebarView'
 
 class ControlPanelViewProvider implements vscode.WebviewViewProvider {
+  private messageHandler: vscode.Disposable | undefined
+
   resolveWebviewView(webviewView: vscode.WebviewView): void {
     webviewView.webview.options = { enableScripts: true }
     webviewView.webview.html = SidebarView.getControlPanelHtml()
-    webviewView.webview.onDidReceiveMessage(msg => SidebarView.handleMessage(msg, 'controlPanel'))
+    this.messageHandler?.dispose()
+    this.messageHandler = webviewView.webview.onDidReceiveMessage(msg => SidebarView.handleMessage(msg, 'controlPanel'))
     SidebarView.registerView('controlPanel', webviewView)
-    webviewView.onDidDispose(() => SidebarView.unregisterView('controlPanel'))
+    webviewView.onDidDispose(() => {
+      SidebarView.unregisterView('controlPanel')
+      this.messageHandler = undefined
+    })
   }
 }
 
