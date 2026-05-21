@@ -206,17 +206,17 @@ public class UserController {
       expect(result.apis[0].summary).toBe('Get all users');
     });
 
-    it('should extract @ApiOperation (fallback)', () => {
+    it('should not use ApiOperation for naming (removed)', () => {
       const code = `
 @RestController
 public class UserController {
-  @ApiOperation(value = "Get all users", notes = "Returns a list")
+  // ApiOperation is no longer used for naming; this should be ignored
   @GetMapping("/users")
   public List<User> getUsers() { return null; }
 }
 `;
       const result = JavaParser.parseSource(code, 'file:///UserController.java');
-      expect(result.apis[0].summary).toBe('Get all users');
+      expect(result.apis[0].summary).toBeUndefined();
     });
 
     it('should handle multiple methods in one class', () => {
@@ -276,6 +276,8 @@ public class ShoppingCartController {
       const paramNames = result.apis[0].parameters.map(p => p.name);
       expect(paramNames).toContain('shopping_cart_id');
       expect(paramNames).toContain('sessionId');
+      // Ensure RequestHeader is captured
+      expect(paramNames).toContain('Authorization');
     });
   });
 });

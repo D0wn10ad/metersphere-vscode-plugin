@@ -167,22 +167,7 @@ export class JavaParser {
             }
           }
         }
-        
-        if (!api.summary) {
-          const apiOperationRegex = /@ApiOperation(?:\s*\(([^)]*)\))?/g;
-          let apiOpMatch;
-          while ((apiOpMatch = apiOperationRegex.exec(code)) !== null) {
-            if (apiOpMatch.index < match.index && match.index - apiOpMatch.index < 200) {
-              const apiOpContent = apiOpMatch[1] || '';
-              let summary = extractOperationValue(apiOpContent, 'value');
-              if (!summary) summary = extractOperationValue(apiOpContent, 'notes');
-              if (summary) {
-                api.summary = summary;
-                break;
-              }
-            }
-          }
-        }
+        // Removed legacy ApiOperation-based naming to enforce: Operation > Javadoc > path
 
         const methodStart = annotationEnd;
         const pathVariableRegex = /@PathVariable(?:\s*\(([^)]*)\))?/g;

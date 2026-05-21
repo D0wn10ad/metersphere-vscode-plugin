@@ -198,6 +198,16 @@ export class JavaParserAst {
           if (/@RequestBody/.test(methodBody)) {
             api.parameters.push({ name: 'body', in: 'body' });
           }
+
+          // Extract @RequestHeader parameters
+          const requestHeaderRegex = /@RequestHeader(?:\s*\(([^)]*)\))?/g;
+          let headerMatch;
+          while ((headerMatch = requestHeaderRegex.exec(methodBody)) !== null) {
+            const headerName = extractPath(headerMatch[1]);
+            if (headerName) {
+              api.parameters.push({ name: headerName, in: 'header' });
+            }
+          }
           
           parsedClass.apis.push(api);
           result.apis.push(api);

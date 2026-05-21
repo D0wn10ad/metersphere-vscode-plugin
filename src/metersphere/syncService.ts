@@ -82,6 +82,19 @@ export class SyncService {
       },
     };
 
+    // Propagate header parameters from API metadata into Postman headers
+    if (api.parameters && api.parameters.length > 0) {
+      const headerParams = (api.parameters as Array<any>).filter(p => p.in === 'header');
+      if (headerParams.length > 0) {
+        item.request.header = headerParams.map((p: any) => {
+          const name = p.name || '';
+          return { key: name, value: '' };
+        });
+      } else {
+        item.request.header = [];
+      }
+    }
+
     if (variables.length > 0) {
       item.request.url.variable = variables;
     }

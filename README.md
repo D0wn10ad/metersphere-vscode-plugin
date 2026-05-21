@@ -164,6 +164,24 @@ Tests use a mock VSCode stack: `src/vscode.d.ts`, `node_modules/vscode/index.js`
 | API Endpoints in Navigator | ✅ Complete | API definitions under modules |
 | Debugger Polish & Integration | ✅ Complete | VSCode theme CSS, message queuing, upload duplication guard |
 
+## Current Status
+
+- Resolution focus completed: alignment of API naming precedence to: 1) @Operation(summary) 2) first line of Javadoc 3) API path. This removes @ApiOperation as a naming source and ensures predictable API names in the export path.
+- Header propagation fixed: extracted @RequestHeader names are now propagated into the Postman/MeterSphere export via SyncService, so headers appear in the generated requests instead of being dropped.
+- AST parity enhanced: JavaParserAst now parses @RequestHeader in per-method analysis, bringing AST-based parsing in line with the JavaParser flow for headers.
+- Javadoc enrichment behavior adjusted: enhanceWithJavadoc now only fills summary when one is missing, preserving the explicit @Operation(summary) value. If a summary is present from annotations, Javadoc will not override it.
+- Tests updated: focused tests added/adjusted to verify header extraction and naming precedence across parser paths and export logic. Focused parser tests pass locally.
+- Documentation: README and in-repo task plan reflect current implementation scope and verification steps. No breaking changes to consumer code paths beyond naming precedence and header propagation.
+
+- What remains optional or under consideration:
+  - Extend header metadata (e.g., required, default) propagation to Postman headers.
+  - Parity parity for JavaParserAst with richer tests or deprecation of AST path if unused by the runtime.
+
+- Verification commands (local):
+  - npm test -- test/javaParser.test.ts
+  - npm test --silent
+  - npm run compile
+
 ## Architecture
 
 ```
