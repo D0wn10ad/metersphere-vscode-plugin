@@ -67,6 +67,47 @@ describe('SyncService', () => {
     expect(postman.item[0].request.url.path).toEqual(['api', 'users', ':id']);
   });
 
+  it('should propagate @RequestHeader parameters into Postman headers', () => {
+    const parseResult: ParseResult = {
+      classes: [],
+      apis: [
+        {
+          method: 'GET',
+          path: '/configuration',
+          fullPath: '/api/configuration',
+          parameters: [
+            { name: 'sid', in: 'header' },
+            { name: 'Authorization', in: 'header' },
+          ],
+        },
+      ],
+    };
+
+    const postman = SyncService.toPostmanCollection(parseResult, 'Test API');
+    const headers = postman.item[0].request.header;
+    expect(headers).toEqual([
+      { key: 'sid', value: '' },
+      { key: 'Authorization', value: '' },
+    ]);
+  });
+
+  it('should use path as name fallback when no summary', () => {
+    const parseResult: ParseResult = {
+      classes: [],
+      apis: [
+        {
+          method: 'GET',
+          path: '/users',
+          fullPath: '/api/users',
+          parameters: [],
+        },
+      ],
+    };
+
+    const postman = SyncService.toPostmanCollection(parseResult, 'Test API');
+    expect(postman.item[0].name).toBe('GET /users');
+  });
+
   it('should include request body for POST/PUT', () => {
     const parseResult: ParseResult = {
       classes: [],

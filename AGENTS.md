@@ -2,7 +2,7 @@
 
 ## Overview
 
-This repository hosts a VSCode extension scaffold for MeterSphere (v2.x baseline) and planning artifacts for Phase 1 through Phase 3.
+This repository hosts a VSCode extension for MeterSphere (v2.x baseline) spanning Phases 1–8, plus planning artifacts. The current release is v0.2.0.
 
 Agents who touch this codebase should follow the guidance in this document to ensure consistent builds, tests, and code quality.
 
@@ -25,6 +25,14 @@ npm run compile      # TypeScript compile (out/ directory)
 npm run watch        # Watch mode for development
 npx tsc -p tsconfig.json --noEmit   # Type-check only (no emit)
 ```
+
+### Package VSIX
+
+```bash
+npx @vscode/vsce package          # Build .vsix in repo root
+```
+
+Pre-existing warnings: no LICENSE file (add one to suppress) and 909+ unbundled files (esbuild would reduce that — see Section 4).
 
 ### Lint
 
@@ -118,10 +126,33 @@ src/
     authHeader.js            # Simple auth header helper
     retry.js                 # Retry utility
     math.js                  # Utility module
+    connectionManager.ts     # Connection state tracking
+    commandRouter.ts         # Command registration and dispatch
+    navigatorEngine.ts       # Tree data fetching (workspaces → projects → modules → APIs)
+    navigatorTreeProvider.ts # VSCode TreeDataProvider for Navigator
+    syncEngine.ts            # Controller scanning and sync logic
+    syncService.ts           # Sync upload service
+    javaFileScanner.ts       # Java file discovery
+    javaParser.ts            # Java annotation parser
+    javaParserAst.ts         # AST-based Java parser
+    contextHolder.ts         # Global extension context holder
+    debugLogger.ts           # Debug logging to Output panel
+    models/
+      navigatorNode.ts       # Tree node types (workspace/project/module/api)
+      apiTemplate.ts         # API definition template
+    views/
+      sidebarView.ts         # Control Panel HTML and message handling
 test/
   tokenManager.test.ts       # TokenManager Jest tests
   httpClient.test.ts         # HttpClient Jest tests
   vscode-mock-setup.js       # Global vscode mock for Jest
+  commandRouter.test.ts      # CommandRouter tests
+  connectionManager.test.ts  # ConnectionManager tests
+  navigatorEngine.test.ts    # NavigatorEngine tests
+  navigatorTreeProvider.test.ts # NavigatorTreeProvider tests
+  syncEngine.test.ts         # SyncEngine tests
+  syncService.test.ts        # SyncService tests
+  models/                    # Model tests
 node_modules/vscode/index.js # VSCode API CommonJS mock
 docs/superpowers/
   specs/                     # Design specifications per phase
@@ -129,6 +160,8 @@ docs/superpowers/
 ```
 
 When adding features, decompose into small, self-contained tasks. Each task should produce a self-contained, testable change.
+
+**esbuild bundling** is a deferred enhancement. Currently 909+ files ship unbundled (~1.3 MB). If bandwidth/load time become concerns, wire up `esbuild` (or `@vscode/vsce`'s built-in esbuild integration) to produce a single JS bundle. The current packaging command `npx @vscode/vsce package` will produce the 909-file VSIX until then.
 
 ---
 
@@ -174,6 +207,7 @@ After design and planning, choose one:
 | Sidebar Migration | ✅ Complete | 4 separate webviews merged into single Control Panel; tab-bar replaced with accordion panels |
 | API Endpoints in Navigator | ✅ Complete | API definitions shown under modules in tree |
 | Debugger Polish & Sidebar Integration | ✅ Complete | VSCode theme CSS variables in debugger; inline History removed (sidebar-only); onclick→addEventListener cleanup; message queuing; upload duplication guard |
+| Header/Naming Fixes | ✅ Complete | @RequestHeader propagation, API naming precedence (Operation > Javadoc > path), AST parser parity |
 
 NOTE on phases:
 - Phase 3A was initially Stub because getEnvironmentHtml() and getHistoryHtml() were stubs (populated with real data during Sidebar Migration; now fully Complete)

@@ -1,9 +1,14 @@
 {
   "name": "metersphere-vscode-extension",
   "displayName": "MeterSphere VSCode",
-  "description": "VSCode extension to interact with MeterSphere v2 APIs (Phase 1 MVP + Phase 2 Navigator)",
-  "version": "0.1.0",
+  "description": "VSCode extension for MeterSphere v2 APIs — sync Java Spring controllers, browse projects, manage test resources, and debug API requests from your editor",
+  "version": "0.2.0",
   "publisher": "metersphere",
+  "icon": "media/ms_big_logo.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/D0wn10ad/metersphere-vscode-plugin.git"
+  },
   "engines": {
     "vscode": "^1.80.0"
   },
@@ -11,7 +16,6 @@
     "Other"
   ],
   "activationEvents": [
-    "*",
     "onCommand:metersphere.showDebugger",
     "onCommand:metersphere.refreshNavigator",
     "onCommand:metersphere.openNavigator",
@@ -50,7 +54,7 @@
       "properties": {
         "metersphere.msUrl": {
           "type": "string",
-          "default": "http://localhost:8080",
+          "default": "http://localhost:8081",
           "description": "MeterSphere server URL"
         },
         "metersphere.accessKey": {
