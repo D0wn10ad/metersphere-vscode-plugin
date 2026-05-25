@@ -582,6 +582,13 @@ export class SidebarView {
               var c = e.config;
               details += '<div class="env-detail"><strong>Config:</strong> ' + (c.protocol || 'HTTP') + '://' + (c.host || '-') + ':' + (c.port || '') + '</div>';
             }
+            if (e.variables) {
+              try {
+                var parsed = JSON.parse(e.variables);
+                var count = Array.isArray(parsed) ? parsed.length : Object.keys(parsed).length;
+                details += '<div class="env-detail"><strong>Variables:</strong> ' + count + '</div>';
+              } catch(e) {}
+            }
             if (e.description) {
               details += '<div class="env-detail">' + e.description + '</div>';
             }
@@ -1219,6 +1226,13 @@ window.addEventListener('message', function(event) {
         if (e.config) {
           var c = e.config;
           details += '<div class="env-detail"><strong>Config:</strong> ' + (c.protocol || 'HTTP') + '://' + (c.host || '-') + ':' + (c.port || '') + '</div>';
+        }
+        if (e.variables) {
+          try {
+            var parsed = JSON.parse(e.variables);
+            var count = Array.isArray(parsed) ? parsed.length : Object.keys(parsed).length;
+            details += '<div class="env-detail"><strong>Variables:</strong> ' + count + '</div>';
+          } catch(e) {}
         }
         if (e.description) {
           details += '<div class="env-detail">' + e.description + '</div>';
