@@ -33,9 +33,29 @@ interface MsApiDefinition {
 
 export class NavigatorEngine {
   private static workspaceCache: NavigatorNode[] | null = null
+  private static contextState: any = null
+
+  static setStateStorage(storage: any): void {
+    NavigatorEngine.contextState = storage
+  }
 
   static clearCache(): void {
     NavigatorEngine.workspaceCache = null
+  }
+
+  private static async getCached<T>(key: string, fetcher: () => Promise<T>, ttlMs = 300_000): Promise<T> {
+    if (NavigatorEngine.contextState) {
+      const cached: { data: T; timestamp: number } | undefined = NavigatorEngine.contextState.get(key)
+      if (cached && Date.now() - cached.timestamp < ttlMs) {
+        DebugLogger.log('Navigator', `Using cached data for ${key}`, {})
+        return cached.data
+      }
+    }
+    const data = await fetcher()
+    if (NavigatorEngine.contextState) {
+      await NavigatorEngine.contextState.update(key, { data, timestamp: Date.now() })
+    }
+    return data
   }
 
   private static buildAuthHeaders(contentType?: string): Record<string, string> {
@@ -59,89 +79,95 @@ export class NavigatorEngine {
       DebugLogger.log('Navigator', 'Using cached workspaces', { count: NavigatorEngine.workspaceCache.length })
       return NavigatorEngine.workspaceCache
     }
-    try {
-      const baseUrl = NavigatorEngine.getBaseUrl()
-      const headers = NavigatorEngine.buildAuthHeaders()
-      const url = `${baseUrl}/api/workspace/list/userworkspace`
-      DebugLogger.log('Navigator', 'Discovering workspaces', { url, hasHeaders: !!headers.accessKey })
-      
-      const resp = await fetchFn('GET', url, headers)
-      DebugLogger.log('Navigator', 'Workspaces response', { status: resp.status, bodyKeys: Object.keys(resp.body ?? {}) })
-      
-      const data = (resp.body as { data: MsWorkspace[] }).data ?? []
-      const nodes = data.map(ws => new NavigatorNode({
-        id: ws.id,
-        name: ws.name,
-        type: NodeType.WORKSPACE,
-      }))
-      NavigatorEngine.workspaceCache = nodes
-      DebugLogger.log('Navigator', 'Workspaces discovered', { count: nodes.length })
-      return nodes
-    } catch (error) {
-      DebugLogger.error('Navigator', 'Failed to discover workspaces', error)
-      console.warn('NavigatorEngine: failed to discover workspaces:', error)
-      return []
-    }
+    return NavigatorEngine.getCached('workspaces', async () => {
+      try {
+        const baseUrl = NavigatorEngine.getBaseUrl()
+        const headers = NavigatorEngine.buildAuthHeaders()
+        const url = `${baseUrl}/api/workspace/list/userworkspace`
+        DebugLogger.log('Navigator', 'Discovering workspaces', { url, hasHeaders: !!headers.accessKey })
+        
+        const resp = await fetchFn('GET', url, headers)
+        DebugLogger.log('Navigator', 'Workspaces response', { status: resp.status, bodyKeys: Object.keys(resp.body ?? {}) })
+        
+        const data = (resp.body as { data: MsWorkspace[] }).data ?? []
+        const nodes = data.map(ws => new NavigatorNode({
+          id: ws.id,
+          name: ws.name,
+          type: NodeType.WORKSPACE,
+        }))
+        NavigatorEngine.workspaceCache = nodes
+        DebugLogger.log('Navigator', 'Workspaces discovered', { count: nodes.length })
+        return nodes
+      } catch (error) {
+        DebugLogger.error('Navigator', 'Failed to discover workspaces', error)
+        console.warn('NavigatorEngine: failed to discover workspaces:', error)
+        return []
+      }
+    })
   }
 
   static async discoverProjects(
     workspaceId: string,
     fetchFn: (method: string, url: string, headers: Record<string, string>, body?: unknown) => Promise<HttpResponse>
   ): Promise<NavigatorNode[]> {
-    const baseUrl = NavigatorEngine.getBaseUrl()
-    const body = { workspaceIds: [workspaceId] }
-    const headers = NavigatorEngine.buildAuthHeaders('application/json')
-    const url = `${baseUrl}/api/project/list/related`
-    
-    DebugLogger.log('Navigator', 'Discovering projects', { workspaceId, url, hasHeaders: !!headers.accessKey })
-    
-    try {
-      const resp = await fetchFn('POST', url, headers, body)
-      DebugLogger.log('Navigator', 'Projects response', { status: resp.status, bodyKeys: Object.keys(resp.body ?? {}) })
+    return NavigatorEngine.getCached(`projects_${workspaceId}`, async () => {
+      const baseUrl = NavigatorEngine.getBaseUrl()
+      const body = { workspaceIds: [workspaceId] }
+      const headers = NavigatorEngine.buildAuthHeaders('application/json')
+      const url = `${baseUrl}/api/project/list/related`
       
-      const data = (resp.body as { data: MsProject[] }).data ?? []
-      const nodes = data.map(proj => new NavigatorNode({
-        id: proj.id,
-        name: proj.name,
-        type: NodeType.PROJECT,
-        parentId: proj.workspaceId ?? workspaceId,
-      }))
-      DebugLogger.log('Navigator', 'Projects discovered', { count: nodes.length })
-      return nodes
-    } catch (error) {
-      DebugLogger.error('Navigator', 'Failed to discover projects', error)
-      return []
-    }
+      DebugLogger.log('Navigator', 'Discovering projects', { workspaceId, url, hasHeaders: !!headers.accessKey })
+      
+      try {
+        const resp = await fetchFn('POST', url, headers, body)
+        DebugLogger.log('Navigator', 'Projects response', { status: resp.status, bodyKeys: Object.keys(resp.body ?? {}) })
+        
+        const data = (resp.body as { data: MsProject[] }).data ?? []
+        const nodes = data.map(proj => new NavigatorNode({
+          id: proj.id,
+          name: proj.name,
+          type: NodeType.PROJECT,
+          parentId: proj.workspaceId ?? workspaceId,
+        }))
+        DebugLogger.log('Navigator', 'Projects discovered', { count: nodes.length })
+        return nodes
+      } catch (error) {
+        DebugLogger.error('Navigator', 'Failed to discover projects', error)
+        return []
+      }
+    })
   }
 
   static async discoverModules(
     projectId: string,
     fetchFn: (method: string, url: string, headers: Record<string, string>, body?: unknown) => Promise<HttpResponse>
   ): Promise<NavigatorNode[]> {
-    const baseUrl = NavigatorEngine.getBaseUrl()
-    const headers = NavigatorEngine.buildAuthHeaders()
-    const url = `${baseUrl}/api/api/module/list/${projectId}/HTTP`
-    
-    DebugLogger.log('Navigator', 'Discovering modules', { projectId, url, hasHeaders: !!headers.accessKey })
-    
-    try {
-      const resp = await fetchFn('GET', url, headers)
-      DebugLogger.log('Navigator', 'Modules response', { status: resp.status, body: resp.body })
+    return NavigatorEngine.getCached(`modules_${projectId}`, async () => {
+      const baseUrl = NavigatorEngine.getBaseUrl()
+      const headers = NavigatorEngine.buildAuthHeaders()
+      const url = `${baseUrl}/api/api/module/list/${projectId}/HTTP`
       
-      const data = (resp.body as { data: MsModule[] }).data ?? []
-      DebugLogger.log('Navigator', 'Modules discovered', { count: data.length, modules: data.map(m => ({ id: m.id, name: m.name })) })
+      DebugLogger.log('Navigator', 'Discovering modules', { projectId, url, hasHeaders: !!headers.accessKey })
       
-      return data.map(mod => new NavigatorNode({
+      try {
+        const resp = await fetchFn('GET', url, headers)
+        DebugLogger.log('Navigator', 'Modules response', { status: resp.status, body: resp.body })
+        
+        const data = (resp.body as { data: MsModule[] }).data ?? []
+        DebugLogger.log('Navigator', 'Modules discovered', { count: data.length, modules: data.map(m => ({ id: m.id, name: m.name })) })
+        
+        return data.map(mod => new NavigatorNode({
         id: mod.id,
         name: mod.name,
         type: NodeType.MODULE,
         parentId: mod.parentId,
         projectId: mod.projectId || projectId,
       }))
-    } catch (error) {
-      DebugLogger.error('Navigator', 'Failed to discover modules', error)
-      return []
-    }
+      } catch (error) {
+        DebugLogger.error('Navigator', 'Failed to discover modules', error)
+        return []
+      }
+    })
   }
 
   static async discoverApis(
