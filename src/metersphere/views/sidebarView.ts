@@ -236,23 +236,31 @@ export class SidebarView {
         }
       }
 
-      SidebarView.postMessage({ command: 'uploadProgress', data: { message: 'Converting to Postman format...' } })
+      const format = SettingsManager.getExportFormat()
+      const isSwagger = format === 'swagger2'
+
+      SidebarView.postMessage({ command: 'uploadProgress', data: { message: `Converting to ${isSwagger ? 'OpenAPI' : 'Postman'} format...` } })
 
       const collectionName = uploadData.files.length === 1
         ? uploadData.files[0].split(/[/\\]/).pop()?.replace('.java', '') || 'Java API'
         : 'Java APIs'
 
-      const postmanCollection = SyncService.toPostmanCollection(allApis, collectionName)
+      let jsonContent: string
+      if (isSwagger) {
+        jsonContent = SyncService.toOpenApiCollection(allApis, collectionName)
+      } else {
+        const postmanCollection = SyncService.toPostmanCollection(allApis, collectionName)
 
-      if (uploadData.contextPath) {
-        for (const item of postmanCollection.item) {
-          const path = '/' + uploadData.contextPath.replace(/^\//, '') + '/' + item.request.url.path.join('/')
-          item.request.url.raw = path
-          item.request.url.path = path.split('/').filter(Boolean)
+        if (uploadData.contextPath) {
+          for (const item of postmanCollection.item) {
+            const path = '/' + uploadData.contextPath.replace(/^\//, '') + '/' + item.request.url.path.join('/')
+            item.request.url.raw = path
+            item.request.url.path = path.split('/').filter(Boolean)
+          }
         }
-      }
 
-      const jsonContent = JSON.stringify(postmanCollection, null, 2)
+        jsonContent = JSON.stringify(postmanCollection, null, 2)
+      }
 
       const moduleParts = uploadData.moduleId.split(':')
       const projectId = moduleParts[0]
@@ -270,7 +278,7 @@ export class SidebarView {
       SidebarView.postMessage({ command: 'uploadProgress', data: { message: 'Uploading to MeterSphere...' } })
 
       const isFullCoverage = uploadData.mode === 'fullCoverage'
-      const urlCoverModule = isFullCoverage ? 'true' : 'false'
+      const serverVersion = SettingsManager.getServerVersion()
 
       // Create FormData with proper multipart format
       const formData = new FormData()
@@ -279,64 +287,37 @@ export class SidebarView {
         contentType: 'application/json',
       })
 
-      // Build request JSON first
-      const bodyModeId = uploadData.mode === 'fullCoverage' ? 'fullCoverage' : 'incrementalMerge'
-      const requestJson = JSON.stringify({
-        name: collectionName,
-        id: '',
-        resourceId: '',
-        userId: '',
-        versionId: '',
-        updateVersionId: '',
-        defaultVersion: '',
-        modulePath: '',
-        environmentId: '',
-        useEnvironment: false,
-        swaggerUrl: '',
-        openCustomNum: true,
-        headers: [],
-        arguments: [],
-        platform: 'Postman',
-        fileName: `${collectionName}.json`,
-        moduleId: moduleId,
-        projectId: projectId,
-        modeId: bodyModeId,
-        syncCase: uploadData.syncCase ?? true,
-        model: 'definition',
-        protocol: 'HTTP',
-        origin: 'vscode',
-        coverModule: isFullCoverage,
-        authManager: {
-          type: 'AuthManager',
-          clazzName: 'io.metersphere.api.dto.definition.request.auth.MsAuthManager',
-          id: '',
-          resourceId: null,
-          name: '',
-          label: null,
-          referenced: null,
-          active: false,
-          index: null,
-          enable: true,
-          refType: null,
-          hashTree: null,
-          projectId: null,
-          isMockEnvironment: false,
-          environmentId: null,
-          pluginId: null,
-          stepName: null,
-          parent: null,
-          username: '',
-          password: '',
-          url: null,
-          realm: null,
-          verification: '',
-          mechanism: '',
-          encrypt: 'false',
-          domain: null,
-          environment: null,
-          mockEnvironment: false,
-        },
-      })
+      // Build request JSON based on server version
+      let requestJson: string
+      if (serverVersion === 'v3') {
+        requestJson = JSON.stringify({
+          coverModule: isFullCoverage,
+          coverData: isFullCoverage,
+          type: 'API',
+          platform: 'Swagger3',
+          syncCase: uploadData.syncCase ?? true,
+          moduleId,
+          model: 'definition',
+          projectId,
+          protocol: 'HTTP',
+          origin: 'vscode',
+        })
+      } else {
+        const bodyModeId = isFullCoverage ? 'fullCoverage' : 'incrementalMerge'
+        requestJson = JSON.stringify({
+          platform: isSwagger ? 'Swagger2' : 'Postman',
+          moduleId,
+          projectId,
+          modeId: bodyModeId,
+          syncCase: uploadData.syncCase ?? true,
+          model: 'definition',
+          protocol: 'HTTP',
+          origin: 'vscode',
+          coverModule: isFullCoverage,
+          versionId: uploadData.versionId ?? '',
+          updateVersionId: uploadData.updateVersionId ?? '',
+        })
+      }
 
       // FIXED: Append 'request' AFTER requestJson is created
       formData.append('request', requestJson, { 
@@ -371,17 +352,6 @@ export class SidebarView {
         bodyPreview: bodyBuffer?.toString('utf8').substring(0, 100),
       })
 
-      const params = new URLSearchParams({
-        modeId: uploadData.mode,
-        projectId,
-        moduleId,
-        platform: 'Postman',
-        model: 'definition',
-        protocol: 'HTTP',
-        origin: 'vscode',
-        coverModule: urlCoverModule,
-      })
-
       // Debug log for request JSON content
       DebugLogger.log('Sync', 'Request JSON content', {
         requestJson: requestJson.substring(0, 500),
@@ -389,14 +359,14 @@ export class SidebarView {
       })
 
       DebugLogger.log('Sync', 'Upload request', {
-        url: `${msUrl}/api/api/definition/import?${params.toString()}`,
+        url: `${msUrl}/api/api/definition/import`,
         headerKeys: Object.keys(uploadHeaders),
         hasAccessKey: !!(uploadHeaders as any).accessKey,
         hasSignature: !!(uploadHeaders as any).signature,
         contentType: (uploadHeaders as any)['Content-Type'],
       })
 
-      const response = await fetch(`${msUrl}/api/api/definition/import?${params.toString()}`, {
+      const response = await fetch(`${msUrl}/api/api/definition/import`, {
         method: 'POST',
         headers: uploadHeaders,
         body: bodyBuffer,  // Use the pre-computed buffer instead of streaming formData
