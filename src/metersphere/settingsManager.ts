@@ -76,12 +76,20 @@ export class SettingsManager {
     return vscode.workspace.getConfiguration().get<string>(SettingsManager.EXPORT_FORMAT_KEY) ?? 'postman'
   }
 
+  static setExportFormat(format: string): void {
+    vscode.workspace.getConfiguration().update(SettingsManager.EXPORT_FORMAT_KEY, format, vscode.ConfigurationTarget.Global)
+  }
+
   static getServerVersion(): string {
-    return vscode.workspace.getConfiguration().get<string>(SettingsManager.SERVER_VERSION_KEY) ?? 'v2'
+    return 'v2'
   }
 
   static isRejectUnauthorized(): boolean {
     return vscode.workspace.getConfiguration().get<boolean>(SettingsManager.REJECT_UNAUTHORIZED_KEY) ?? true
+  }
+
+  static setRejectUnauthorized(value: boolean): void {
+    vscode.workspace.getConfiguration().update(SettingsManager.REJECT_UNAUTHORIZED_KEY, value, vscode.ConfigurationTarget.Global)
   }
 
   static isConfigured(): boolean {

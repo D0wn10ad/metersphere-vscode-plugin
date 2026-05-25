@@ -148,6 +148,8 @@ export class SidebarView {
         SettingsManager.setAccessKey(message.data.accessKey)
         SettingsManager.setSecretKey(message.data.secretKey)
         SettingsManager.setDebugEnabled(message.data.debugEnabled ?? false)
+        if (message.data.exportFormat) SettingsManager.setExportFormat(message.data.exportFormat)
+        if (message.data.rejectUnauthorized !== undefined) SettingsManager.setRejectUnauthorized(message.data.rejectUnauthorized)
         vscode.window.showInformationMessage('Settings saved!')
         break
 
@@ -711,6 +713,8 @@ export class SidebarView {
     const accessKey = SettingsManager.getAccessKey() ?? ''
     const secretKey = SettingsManager.getSecretKey() ?? ''
     const debugEnabled = SettingsManager.isDebugEnabled() ? 'checked' : ''
+    const rejectUnauthorized = SettingsManager.isRejectUnauthorized() ? 'checked' : ''
+    const exportFormat = SettingsManager.getExportFormat()
 
     return `<!DOCTYPE html>
 <html>
@@ -737,6 +741,17 @@ export class SidebarView {
       <input type="checkbox" id="debugEnabled" ${debugEnabled}>
       <label style="margin: 0; font-weight: normal;">Enable Debug Logging</label>
     </div>
+    <div class="form-group">
+      <label>Export Format</label>
+      <select id="exportFormatSelect">
+        <option value="postman" ${exportFormat === 'postman' ? 'selected' : ''}>Postman</option>
+        <option value="swagger2" ${exportFormat === 'swagger2' ? 'selected' : ''}>OpenAPI/Swagger 2</option>
+      </select>
+    </div>
+    <div class="checkbox-label">
+      <input type="checkbox" id="rejectUnauthorizedChk" ${rejectUnauthorized}>
+      <label style="margin: 0; font-weight: normal;">Reject Self-Signed Certificates</label>
+    </div>
     <button type="button" class="btn-secondary" id="settingsTestBtn">Test Connection</button>
     <button type="submit" class="btn-primary">Save Settings</button>
   </form>
@@ -749,7 +764,9 @@ export class SidebarView {
         msUrl: document.getElementById('msUrl').value,
         accessKey: document.getElementById('accessKey').value,
         secretKey: document.getElementById('secretKey').value,
-        debugEnabled: document.getElementById('debugEnabled').checked
+        debugEnabled: document.getElementById('debugEnabled').checked,
+        exportFormat: document.getElementById('exportFormatSelect').value,
+        rejectUnauthorized: document.getElementById('rejectUnauthorizedChk').checked
       }});
     }
     function testConnection() {
