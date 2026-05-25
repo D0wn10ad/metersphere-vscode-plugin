@@ -81,6 +81,23 @@
           "type": "boolean",
           "default": false,
           "description": "Enable debug logging to Output panel"
+        },
+        "metersphere.exportFormat": {
+          "type": "string",
+          "default": "postman",
+          "enum": ["postman", "swagger2"],
+          "description": "API definition export format for MeterSphere upload"
+        },
+        "metersphere.serverVersion": {
+          "type": "string",
+          "default": "v2",
+          "enum": ["v2", "v3"],
+          "description": "MeterSphere server version (controls URL format and parameter set)"
+        },
+        "metersphere.rejectUnauthorized": {
+          "type": "boolean",
+          "default": true,
+          "description": "Reject self-signed HTTPS certificates (set to false for development servers)"
         }
       }
     },
