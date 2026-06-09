@@ -2,9 +2,12 @@ import * as vscode from 'vscode'
 import { httpRequest } from './httpClient'
 import { SettingsManager } from './settingsManager'
 import { DebugLogger } from './debugLogger'
+import { resolveVariables, parseEnvVariables, EnvironmentVariables } from './variableResolver'
 
 export class WebViewController {
   private panel?: vscode.WebviewPanel
+  private selectedEnvVars: EnvironmentVariables = {}
+  private selectedEnvName = ''
 
   constructor(private context: vscode.ExtensionContext) {}
 
@@ -17,6 +20,8 @@ export class WebViewController {
       enableScripts: true
     })
     this.panel.webview.html = this.getHtml()
+
+    this.fetchEnvironments()
     
     // Message bridge
     this.panel.webview.onDidReceiveMessage(async (message) => {
@@ -40,33 +45,46 @@ export class WebViewController {
             return
           }
           
-          const reqPayload = payload as { 
+          const reqPayload = payload as {
             url: string; 
             method: string; 
             headers?: Record<string, string>; 
             body?: string 
           }
-          
-          const headers: Record<string, string> = reqPayload.headers || {}
+
+          const resolvedUrl = resolveVariables(reqPayload.url, this.selectedEnvVars)
+          const resolvedHeaders: Record<string, string> = {}
+          if (reqPayload.headers) {
+            for (const key of Object.keys(reqPayload.headers)) {
+              resolvedHeaders[key] = resolveVariables(reqPayload.headers[key], this.selectedEnvVars)
+            }
+          }
+          let resolvedBody = reqPayload.body
+          if (resolvedBody) {
+            resolvedBody = resolveVariables(resolvedBody, this.selectedEnvVars)
+          }
+
+          const headers: Record<string, string> = resolvedHeaders
           headers['accessKey'] = accessKey
           headers['signature'] = SettingsManager.generateSignature(accessKey, secretKey)
           
           DebugLogger.log('Debugger', 'Sending request', { 
-            url: reqPayload.url, 
+            url: resolvedUrl,
             method: reqPayload.method,
+            env: this.selectedEnvName || 'none',
             headers: Object.keys(headers)
           })
           
           let body: any = undefined
-          if (reqPayload.body) {
+          if (resolvedBody) {
             try {
-              body = JSON.parse(reqPayload.body)
+              body = JSON.parse(resolvedBody)
             } catch {
-              body = reqPayload.body
+              body = resolvedBody
             }
           }
           
-          const resp = await httpRequest(reqPayload.method, reqPayload.url, headers, body)
+          const resp = await httpRequest(reqPayload.method, resolvedUrl, headers, body)
           
           DebugLogger.log('Debugger', 'Response received', { 
             status: resp.status,
@@ -92,12 +110,46 @@ export class WebViewController {
         SettingsManager.setAccessKey(payload as string)
       } else if (command === 'setSecretKey') {
         SettingsManager.setSecretKey(payload as string)
+      } else if (command === 'selectEnvironment') {
+        const envId = payload as string
+        if (envId) {
+          const cachedEnvironments = this.context.workspaceState.get<any[]>('cachedEnvironments') || []
+          const env = cachedEnvironments.find((item: any) => item.id === envId)
+          if (env) {
+            this.selectedEnvName = env.name || ''
+            this.selectedEnvVars = parseEnvVariables(env.variables)
+            DebugLogger.log('Debugger', 'Selected environment', { name: this.selectedEnvName, vars: Object.keys(this.selectedEnvVars).length })
+            this.panel.webview.postMessage({ command: 'envSelected', payload: { name: this.selectedEnvName, count: Object.keys(this.selectedEnvVars).length } })
+          }
+        } else {
+          this.selectedEnvName = ''
+          this.selectedEnvVars = {}
+          this.panel.webview.postMessage({ command: 'envSelected', payload: { name: '', count: 0 } })
+        }
       }
     })
     
     this.panel.onDidDispose(() => {
       this.panel = undefined
     })
+  }
+
+  private async fetchEnvironments(): Promise<void> {
+    const msUrl = SettingsManager.getMsUrl()
+    const accessKey = SettingsManager.getAccessKey()
+    const secretKey = SettingsManager.getSecretKey()
+    const projectId = SettingsManager.getProjectId()
+    if (!msUrl || !accessKey || !secretKey || !projectId) return
+    try {
+      const headers = SettingsManager.buildAuthHeaders('application/json')
+      const resp = await fetch(`${msUrl}/api/environment/list/${projectId}`, { headers })
+      const json = await resp.json()
+      const envs = json.success && json.data ? json.data : []
+      await this.context.workspaceState.update('cachedEnvironments', envs)
+      this.panel?.webview.postMessage({ command: 'environmentsLoaded', payload: { environments: envs } })
+    } catch (error) {
+      DebugLogger.error('Debugger', 'Failed to load environments', error)
+    }
   }
 
   private async saveToHistory(request: any, response: any): Promise<void> {
@@ -227,6 +279,14 @@ export class WebViewController {
     <!-- Left Panel: Request -->
     <div class="left-panel">
       <div class="section-title">Request</div>
+
+      <div class="form-group">
+        <label for="envSelect">Environment</label>
+        <select id="envSelect">
+          <option value="">No environment</option>
+        </select>
+        <div id="envIndicator" style="font-size:11px;color:var(--vscode-descriptionForeground);margin-top:2px;"></div>
+      </div>
       
       <div class="form-group">
         <div class="header-row">
@@ -290,6 +350,9 @@ export class WebViewController {
           e.target.parentElement.remove();
         }
       });
+      document.getElementById('envSelect').addEventListener('change', function(e) {
+        vscode.postMessage({ command: 'selectEnvironment', payload: e.target.value });
+      });
     })();
     
     function addHeader() {
@@ -350,6 +413,24 @@ export class WebViewController {
                             resp.status >= 400 && resp.status < 500 ? 'status-4xx' : 
                             resp.status >= 500 ? 'status-5xx' : 'status-error';
           statusDiv.innerHTML = '<span class="status-badge ' + statusClass + '">' + resp.status + ' ' + (resp.statusText || '') + '</span>';
+        }
+      } else if (msg.command === 'environmentsLoaded') {
+        const sel = document.getElementById('envSelect');
+        const current = sel.value;
+        sel.innerHTML = '<option value="">No environment</option>';
+        (msg.payload.environments || []).forEach(function(env) {
+          var opt = document.createElement('option');
+          opt.value = env.id;
+          opt.textContent = env.name || 'Unnamed';
+          sel.appendChild(opt);
+        });
+        if (current) sel.value = current;
+        document.getElementById('envIndicator').textContent = (msg.payload.environments || []).length + ' environments loaded';
+      } else if (msg.command === 'envSelected') {
+        if (msg.payload.name) {
+          document.getElementById('envIndicator').textContent = 'Active: ' + msg.payload.name + ' (' + msg.payload.count + ' variables)';
+        } else {
+          document.getElementById('envIndicator').textContent = 'No environment selected - {{var}} will not be resolved';
         }
       }
     });

@@ -206,17 +206,16 @@ public class UserController {
       expect(result.apis[0].summary).toBe('Get all users');
     });
 
-    it('should not use ApiOperation for naming (removed)', () => {
+    it('should auto-generate summary from method and path when no annotation', () => {
       const code = `
 @RestController
 public class UserController {
-  // ApiOperation is no longer used for naming; this should be ignored
   @GetMapping("/users")
   public List<User> getUsers() { return null; }
 }
 `;
       const result = JavaParser.parseSource(code, 'file:///UserController.java');
-      expect(result.apis[0].summary).toBeUndefined();
+      expect(result.apis[0].summary).toBe('GET /users');
     });
 
     it('should handle multiple methods in one class', () => {
@@ -278,6 +277,317 @@ public class ShoppingCartController {
       expect(paramNames).toContain('sessionId');
       // Ensure RequestHeader is captured
       expect(paramNames).toContain('Authorization');
+    });
+  });
+
+  describe('pathless annotations', () => {
+    it('should handle @GetMapping without path argument', () => {
+      const code = `
+@RestController
+public class NoPathController {
+  @GetMapping
+  public List<User> getUsers() { return []; }
+}
+`;
+      const result = JavaParser.parseSource(code, 'file:///NoPathController.java');
+      expect(result.apis).toHaveLength(1);
+      expect(result.apis[0].method).toBe('GET');
+      expect(result.apis[0].path).toBe('');
+    });
+
+    it('should handle @PutMapping without path argument', () => {
+      const code = `
+@RestController
+public class NoPathController {
+  @PutMapping
+  public void update() { }
+}
+`;
+      const result = JavaParser.parseSource(code, 'file:///NoPathController.java');
+      expect(result.apis).toHaveLength(1);
+      expect(result.apis[0].method).toBe('PUT');
+    });
+
+    it('should handle @PostMapping without path argument', () => {
+      const code = `
+@RestController
+public class NoPathController {
+  @PostMapping
+  public void create() { }
+}
+`;
+      const result = JavaParser.parseSource(code, 'file:///NoPathController.java');
+      expect(result.apis).toHaveLength(1);
+      expect(result.apis[0].method).toBe('POST');
+    });
+
+    it('should handle @DeleteMapping without path argument', () => {
+      const code = `
+@RestController
+public class NoPathController {
+  @DeleteMapping
+  public void delete() { }
+}
+`;
+      const result = JavaParser.parseSource(code, 'file:///NoPathController.java');
+      expect(result.apis).toHaveLength(1);
+      expect(result.apis[0].method).toBe('DELETE');
+    });
+  });
+
+  describe('method-level @RequestMapping', () => {
+    it('should parse method-level @RequestMapping with explicit GET method', () => {
+      const code = `
+@RestController
+public class MappingController {
+  @RequestMapping(value = "/items", method = RequestMethod.GET)
+  public List<Item> getItems() { return []; }
+}
+`;
+      const result = JavaParser.parseSource(code, 'file:///MappingController.java');
+      expect(result.apis).toHaveLength(1);
+      expect(result.apis[0].method).toBe('GET');
+      expect(result.apis[0].path).toBe('/items');
+    });
+
+    it('should parse method-level @RequestMapping with POST method', () => {
+      const code = `
+@RestController
+public class MappingController {
+  @RequestMapping(value = "/items", method = RequestMethod.POST)
+  public Item createItem() { return null; }
+}
+`;
+      const result = JavaParser.parseSource(code, 'file:///MappingController.java');
+      expect(result.apis).toHaveLength(1);
+      expect(result.apis[0].method).toBe('POST');
+      expect(result.apis[0].path).toBe('/items');
+    });
+
+    it('should default to GET for @RequestMapping without explicit method', () => {
+      const code = `
+@RestController
+public class MappingController {
+  @RequestMapping("/items")
+  public List<Item> getItems() { return []; }
+}
+`;
+      const result = JavaParser.parseSource(code, 'file:///MappingController.java');
+      expect(result.apis).toHaveLength(1);
+      expect(result.apis[0].method).toBe('GET');
+    });
+  });
+
+  describe('@ApiOperation summary extraction', () => {
+    it('should extract summary from @ApiOperation(value = "...")', () => {
+      const code = `
+@RestController
+public class TestController {
+  @ApiOperation(value = "Get all items", notes = "Returns items list")
+  @GetMapping("/items")
+  public List<Item> getItems() { return []; }
+}
+`;
+      const result = JavaParser.parseSource(code, 'file:///TestController.java');
+      expect(result.apis[0].summary).toBe('Get all items');
+    });
+
+    it('should prefer @Operation over @ApiOperation', () => {
+      const code = `
+@RestController
+public class TestController {
+  @Operation(summary = "Operation summary")
+  @ApiOperation(value = "ApiOperation value")
+  @GetMapping("/items")
+  public List<Item> getItems() { return []; }
+}
+`;
+      const result = JavaParser.parseSource(code, 'file:///TestController.java');
+      expect(result.apis[0].summary).toBe('Operation summary');
+    });
+  });
+
+  describe('@ApiParam description extraction', () => {
+    it('should extract @ApiParam description for @PathVariable', () => {
+      const code = `
+@RestController
+public class TestController {
+  @GetMapping("/items/{id}")
+  public Item getItem(
+    @ApiParam("The item identifier") @PathVariable("id") Long id
+  ) { return null; }
+}
+`;
+      const result = JavaParser.parseSource(code, 'file:///TestController.java');
+      const param = result.apis[0].parameters.find(p => p.name === 'id');
+      expect(param).toBeDefined();
+      expect(param!.description).toBe('The item identifier');
+    });
+
+    it('should extract @ApiParam description for @RequestParam', () => {
+      const code = `
+@RestController
+public class TestController {
+  @GetMapping("/items")
+  public List<Item> getItems(
+    @ApiParam("Page number") @RequestParam("page") int page
+  ) { return null; }
+}
+`;
+      const result = JavaParser.parseSource(code, 'file:///TestController.java');
+      const param = result.apis[0].parameters.find(p => p.name === 'page');
+      expect(param).toBeDefined();
+      expect(param!.description).toBe('Page number');
+    });
+  });
+
+  describe('@Parameter (OpenAPI 3.0) description extraction', () => {
+    it('should extract @Parameter description', () => {
+      const code = `
+@RestController
+public class TestController {
+  @GetMapping("/items/{id}")
+  public Item getItem(
+    @Parameter(description = "The item unique id") @PathVariable("id") Long id
+  ) { return null; }
+}
+`;
+      const result = JavaParser.parseSource(code, 'file:///TestController.java');
+      const param = result.apis[0].parameters.find(p => p.name === 'id');
+      expect(param).toBeDefined();
+      expect(param!.description).toBe('The item unique id');
+    });
+  });
+
+  describe('JSR303 validation extraction', () => {
+    it('should extract @Size constraint', () => {
+      const code = `
+@RestController
+public class TestController {
+  @PostMapping("/items")
+  public Item createItem(
+    @Size(min = 3, max = 100) @RequestParam("name") String name
+  ) { return null; }
+}
+`;
+      const result = JavaParser.parseSource(code, 'file:///TestController.java');
+      const param = result.apis[0].parameters.find(p => p.name === 'name');
+      expect(param).toBeDefined();
+      expect(param!.validation).toHaveLength(1);
+      expect(param!.validation![0].type).toBe('Size');
+    });
+
+    it('should extract @NotNull constraint', () => {
+      const code = `
+@RestController
+public class TestController {
+  @PostMapping("/items")
+  public Item createItem(
+    @NotNull @RequestParam("name") String name
+  ) { return null; }
+}
+`;
+      const result = JavaParser.parseSource(code, 'file:///TestController.java');
+      const param = result.apis[0].parameters.find(p => p.name === 'name');
+      expect(param).toBeDefined();
+      expect(param!.validation).toHaveLength(1);
+      expect(param!.validation![0].type).toBe('NotNull');
+    });
+
+    it('should extract @NotBlank constraint', () => {
+      const code = `
+@RestController
+public class TestController {
+  @PostMapping("/items")
+  public Item createItem(
+    @NotBlank @RequestParam("name") String name
+  ) { return null; }
+}
+`;
+      const result = JavaParser.parseSource(code, 'file:///TestController.java');
+      const param = result.apis[0].parameters.find(p => p.name === 'name');
+      expect(param).toBeDefined();
+      expect(param!.validation).toHaveLength(1);
+      expect(param!.validation![0].type).toBe('NotBlank');
+    });
+
+    it('should extract multiple validation constraints', () => {
+      const code = `
+@RestController
+public class TestController {
+  @PostMapping("/items")
+  public Item createItem(
+    @NotNull @Size(min = 1, max = 50) @RequestParam("name") String name
+  ) { return null; }
+}
+`;
+      const result = JavaParser.parseSource(code, 'file:///TestController.java');
+      const param = result.apis[0].parameters.find(p => p.name === 'name');
+      expect(param).toBeDefined();
+      expect(param!.validation!.length).toBeGreaterThanOrEqual(2);
+      const types = param!.validation!.map(v => v.type);
+      expect(types).toContain('NotNull');
+      expect(types).toContain('Size');
+    });
+  });
+
+  describe('parameter name fallback from signature', () => {
+    it('should fall back to Java parameter name when @PathVariable has no value', () => {
+      const code = `
+@RestController
+public class TestController {
+  @GetMapping("/items/{id}")
+  public Item getItem(@PathVariable Long id) { return null; }
+}
+`;
+      const result = JavaParser.parseSource(code, 'file:///TestController.java');
+      const param = result.apis[0].parameters.find(p => p.in === 'path');
+      expect(param).toBeDefined();
+      expect(param!.name).toBe('id');
+    });
+
+    it('should fall back for @RequestParam without explicit name', () => {
+      const code = `
+@RestController
+public class TestController {
+  @GetMapping("/items")
+  public List<Item> getItems(@RequestParam String name) { return []; }
+}
+`;
+      const result = JavaParser.parseSource(code, 'file:///TestController.java');
+      const param = result.apis[0].parameters.find(p => p.in === 'query');
+      expect(param).toBeDefined();
+      expect(param!.name).toBe('name');
+    });
+  });
+
+  describe('@RequestParam required extraction', () => {
+    it('should extract required = true', () => {
+      const code = `
+@RestController
+public class TestController {
+  @GetMapping("/items")
+  public List<Item> getItems(@RequestParam(value = "id", required = true) Long id) { return []; }
+}
+`;
+      const result = JavaParser.parseSource(code, 'file:///TestController.java');
+      const param = result.apis[0].parameters.find(p => p.name === 'id');
+      expect(param).toBeDefined();
+      expect(param!.required).toBe(true);
+    });
+
+    it('should extract required = false', () => {
+      const code = `
+@RestController
+public class TestController {
+  @GetMapping("/items")
+  public List<Item> getItems(@RequestParam(value = "id", required = false) Long id) { return []; }
+}
+`;
+      const result = JavaParser.parseSource(code, 'file:///TestController.java');
+      const param = result.apis[0].parameters.find(p => p.name === 'id');
+      expect(param).toBeDefined();
+      expect(param!.required).toBe(false);
     });
   });
 });
