@@ -1,4 +1,5 @@
 import { ParseResult, ParsedApi } from './javaParser';
+import { OpenApiBuilder } from './openApiBuilder';
 
 export interface PostmanItem {
   name: string;
@@ -110,5 +111,10 @@ export class SyncService {
     }
 
     return item;
+  }
+
+  static toOpenApiCollection(parseResult: ParseResult, name: string): string {
+    const doc = OpenApiBuilder.build(parseResult, name)
+    return JSON.stringify(doc, null, 2)
   }
 }

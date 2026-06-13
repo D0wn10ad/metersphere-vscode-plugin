@@ -20,6 +20,18 @@ function getFetch(): any {
   }
 }
 
+function getAgent(): any {
+  if (!SettingsManager.isRejectUnauthorized()) {
+    try {
+      const https = require('https') as typeof import('https')
+      return new https.Agent({ rejectUnauthorized: false })
+    } catch {
+      return undefined
+    }
+  }
+  return undefined
+}
+
 export async function httpRequest(
   method: string,
   url: string,
@@ -38,6 +50,7 @@ export async function httpRequest(
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
+      agent: getAgent(),
     })
     const durationMs = Date.now() - start
     let contentType = ''

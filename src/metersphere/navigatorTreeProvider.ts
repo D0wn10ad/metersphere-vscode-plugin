@@ -51,7 +51,13 @@ export class NavigatorTreeDataProvider implements vscode.TreeDataProvider<Naviga
       DebugLogger.log('TreeProvider', 'Expanding project', { projectId: element.id, projectName: element.name })
       try {
         const modules = await NavigatorEngine.discoverModules(element.id, this.fetchFn)
-        DebugLogger.log('TreeProvider', 'Project expanded', { moduleCount: modules.length })
+        DebugLogger.log('TreeProvider', 'Project expanded', {
+          moduleCount: modules.length,
+          modules: modules.map(module => ({
+            id: module.id,
+            childIds: module.getChildren().map(child => child.id),
+          })),
+        })
         return modules
       } catch (error) {
         DebugLogger.error('TreeProvider', 'Failed to expand project', error)
@@ -64,7 +70,21 @@ export class NavigatorTreeDataProvider implements vscode.TreeDataProvider<Naviga
       if (!projectId) return []
       DebugLogger.log('TreeProvider', 'Expanding module', { moduleId: element.id, moduleName: element.name, projectId })
       try {
-        return await NavigatorEngine.discoverApis(projectId, this.fetchFn, element.id)
+        const [fetchedChildModules, apis] = await Promise.all([
+          NavigatorEngine.discoverChildModules(projectId, element.id, this.fetchFn),
+          NavigatorEngine.discoverApis(projectId, this.fetchFn, element.id),
+        ])
+        const resolvedChildModules = element.getChildren().length > 0 ? element.getChildren() : fetchedChildModules
+        DebugLogger.log('TreeProvider', 'Module expanded', {
+          moduleId: element.id,
+          moduleName: element.name,
+          storedChildIds: element.getChildren().map(child => child.id),
+          fetchedChildIds: fetchedChildModules.map(child => child.id),
+          apiIds: apis.map(api => api.id),
+          usingStoredChildren: element.getChildren().length > 0,
+          returnedIds: [...resolvedChildModules.map(child => child.id), ...apis.map(api => api.id)],
+        })
+        return [...resolvedChildModules, ...apis]
       } catch (error) {
         DebugLogger.error('TreeProvider', 'Failed to expand module', error)
         return []

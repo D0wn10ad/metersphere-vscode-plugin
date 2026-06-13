@@ -30,6 +30,10 @@ describe('NavigatorEngine', () => {
     NavigatorEngine.clearCache()
   })
 
+  afterEach(() => {
+    NavigatorEngine.setStateStorage(null as any)
+  })
+
   test('discovers workspaces', async () => {
     const nodes = await NavigatorEngine.discoverWorkspaces(mockHttpRequest as any)
     expect(nodes.length).toBeGreaterThan(0)
@@ -57,6 +61,111 @@ describe('NavigatorEngine', () => {
     expect(nodes[0].type).toBe(NodeType.MODULE)
     expect(nodes[0].name).toBe('User Module')
     expect(nodes[0].projectId).toBe('proj-1')
+  })
+
+  test('discovers only top-level modules for a project', async () => {
+    const nestedModuleFetch = async (method: string, url: string, headers: Record<string, string>, body?: unknown) => {
+      if (url.includes('/module/list')) {
+        return {
+          status: 200,
+          body: {
+            data: [
+              { id: 'mod-1', name: 'User Module', parentId: 'proj-1', projectId: 'proj-1' },
+              { id: 'mod-1-1', name: 'User Submodule', parentId: 'mod-1', projectId: 'proj-1' },
+              { id: 'mod-2', name: 'Order Module', parentId: 'proj-1', projectId: 'proj-1' },
+            ],
+          },
+        }
+      }
+      return { status: 200, body: { data: [] } }
+    }
+
+    const nodes = await NavigatorEngine.discoverModules('proj-1', nestedModuleFetch as any)
+    expect(nodes.map(node => node.id)).toEqual(['mod-1', 'mod-2'])
+  })
+
+  test('discovers nested modules from server children trees', async () => {
+    const treeModuleFetch = async (_method: string, url: string) => {
+      if (url.includes('/module/list')) {
+        return {
+          status: 200,
+          body: {
+            data: [
+              {
+                id: 'mod-1',
+                name: 'Root Module',
+                parentId: null,
+                projectId: 'proj-1',
+                children: [
+                  {
+                    id: 'mod-1-1',
+                    name: 'Child Module',
+                    parentId: 'mod-1',
+                    projectId: 'proj-1',
+                    children: [
+                      {
+                        id: 'mod-1-1-1',
+                        name: 'Grandchild Module',
+                        parentId: 'mod-1-1',
+                        projectId: 'proj-1',
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        }
+      }
+      return { status: 200, body: { data: [] } }
+    }
+
+    const nodes = await NavigatorEngine.discoverModules('proj-1', treeModuleFetch as any)
+    expect(nodes.map(node => node.id)).toEqual(['mod-1'])
+    expect(nodes[0].getChildren().map(child => child.id)).toEqual(['mod-1-1'])
+    expect(nodes[0].getChildren()[0].getChildren().map(child => child.id)).toEqual(['mod-1-1-1'])
+  })
+
+  test('discovers child modules from cached workspace state without losing NavigatorNode methods', async () => {
+    const workspaceState = {
+      get: jest.fn((key: string) => {
+        if (key === 'modules_proj-1') {
+          return {
+            data: [
+              {
+                id: 'mod-1',
+                name: 'Root Module',
+                childIds: ['mod-1-1'],
+                children: [
+                  {
+                    id: 'mod-1-1',
+                    name: 'Child Module',
+                    childIds: [],
+                    children: [],
+                    type: 'module',
+                    parentId: 'mod-1',
+                    projectId: 'proj-1',
+                  },
+                ],
+                type: 'module',
+                parentId: 'proj-1',
+                projectId: 'proj-1',
+              },
+            ],
+            timestamp: Date.now(),
+          }
+        }
+        return undefined
+      }),
+      update: jest.fn(),
+    }
+
+    NavigatorEngine.setStateStorage(workspaceState as any)
+
+    const children = await NavigatorEngine.discoverChildModules('proj-1', 'mod-1', mockHttpRequest as any)
+
+    expect(children.map(node => node.id)).toEqual(['mod-1-1'])
+    expect(typeof children[0].getChildren).toBe('function')
   })
 
   test('discovers APIs under a module', async () => {

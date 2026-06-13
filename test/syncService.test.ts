@@ -108,6 +108,18 @@ describe('SyncService', () => {
     expect(postman.item[0].name).toBe('GET /users');
   });
 
+  it('toOpenApiCollection produces valid OpenAPI 3.0 JSON string', () => {
+    const parseResult: ParseResult = {
+      classes: [],
+      apis: [{ method: 'GET', path: '/items', fullPath: '/api/items', summary: 'List items', parameters: [] }],
+    }
+    const json = SyncService.toOpenApiCollection(parseResult, 'Test API')
+    const doc = JSON.parse(json)
+    expect(doc.openapi).toBe('3.0.3')
+    expect(doc.paths['/api/items']).toBeDefined()
+    expect(doc.paths['/api/items'].get.summary).toBe('List items')
+  })
+
   it('should include request body for POST/PUT', () => {
     const parseResult: ParseResult = {
       classes: [],

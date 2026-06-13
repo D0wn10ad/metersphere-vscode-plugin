@@ -9,6 +9,7 @@ node_modules/vscode
 *.map
 .github
 .worktrees
+.opencode
 tsconfig.json
 jest.config.js
 .eslintrc.js

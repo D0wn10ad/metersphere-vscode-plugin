@@ -208,6 +208,8 @@ After design and planning, choose one:
 | API Endpoints in Navigator | ✅ Complete | API definitions shown under modules in tree |
 | Debugger Polish & Sidebar Integration | ✅ Complete | VSCode theme CSS variables in debugger; inline History removed (sidebar-only); onclick→addEventListener cleanup; message queuing; upload duplication guard |
 | Header/Naming Fixes | ✅ Complete | @RequestHeader propagation, API naming precedence (Operation > Javadoc > path), AST parser parity |
+| OpenAPI Schema Resolution | 🚧 Planned | Tiers 1–2 (java-ast type extraction + $ref) in v1; Tiers 3–4 (Java LSP field expansion) deferred |
+| Gap Analysis (IDEA vs VSCode) | ✅ Complete | `docs/superpowers/gap-analysis-vscode-vs-idea.md` documents all P0–P2 gaps |
 
 NOTE on phases:
 - Phase 3A was initially Stub because getEnvironmentHtml() and getHistoryHtml() were stubs (populated with real data during Sidebar Migration; now fully Complete)
@@ -261,6 +263,34 @@ This extension supports multiple ways to sync Java Spring Controllers to MeterSp
 
 ---
 
+## 10) OpenAPI Schema Resolution (Type System)
+
+The extension supports OpenAPI 3.0 JSON export (`platform=Swagger2`) alongside legacy Postman format, controlled by `metersphere.exportFormat` setting.
+
+See spec: `docs/superpowers/specs/2026-05-23-openapi-schema-resolution.md`
+See plan: `docs/superpowers/plans/2026-05-23-openapi-schema-resolution-plan.md`
+
+### Type Resolution Tiers
+
+| Tier | Name | Tool | What It Produces | LSP Dep |
+|------|------|------|------------------|---------|
+| 1 | Return type string | `java-ast` AST (method node) | Raw type text: `Response<IDDShoppingModel>` | No |
+| 2 | Type name / $ref | `typeResolver.ts` | Strips generics → `IDDShoppingModel` | No |
+| 3 | Field-level schemas | Red Hat Java LSP hover (deferred) | Type → field list → `components/schemas` | Yes |
+| 4 | Deep nested expansion | Recursive LSP calls (deferred) | Full nested schema tree | Yes |
+
+Tiers 1–2 are implemented in v1. Tiers 3–4 require `redhat.java` extension and are deferred.
+
+### New Modules
+
+| Module | File | Purpose |
+|--------|------|---------|
+| TypeResolver | `typeResolver.ts` | Extract type name from return type string, build type registry |
+| SchemaGenerator | `schemaGenerator.ts` | Convert Java type → OpenAPI Schema Object |
+| OpenApiBuilder | `openApiBuilder.ts` | Assemble full OpenAPI 3.0 document |
+
+---
+
 ## 13) Worktree Merge Best Practices
 
 ### The Problem
@@ -290,3 +320,25 @@ Before merging worktree to main:
 - [ ] Use `git merge --ours` without checking what exists only in worktree
 - [ ] Delete worktree before verifying merge is complete
 - [ ] Assume `node_modules/` is included in git (it's in .gitignore)
+
+---
+
+## 14) Gap Analysis: VSCode vs IDEA Plugin
+
+See full document: `docs/superpowers/gap-analysis-vscode-vs-idea.md`
+
+### Priority Summary
+
+| Priority | Count | Key Items |
+|----------|-------|-----------|
+| **P0** | 3 | Upload format (Postman → Swagger2/3), Version management, URL query param cleanup |
+| **P1** | 4 | V2/V3 mode selection, URL `/api` suffix auto-append, State caching, Retrieve config workflow |
+| **P2** | 4 | Self-signed cert support, authManager audit, userId in project list, i18n |
+
+### Reference
+
+The gap analysis compares the VSCode plugin against:
+- IDEA plugin v2.0 standalone (original Postman-based approach)
+- IDEA plugin v3.x `MsBaseTransferV2` (V2 server compatibility mode, OpenAPI-based)
+
+When implementing a gap fix, first consult the IDEA source analysis in the gap doc for exact parameter names, endpoint paths, and serialization format.

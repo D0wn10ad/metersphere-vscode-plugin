@@ -29,6 +29,7 @@ class ControlPanelViewProvider implements vscode.WebviewViewProvider {
 
 export function activate(context: vscode.ExtensionContext): void {
   ContextHolder.setContext(context)
+  NavigatorEngine.setStateStorage(context.workspaceState)
 
   context.subscriptions.push(vscode.window.registerWebviewViewProvider('metersphere.controlPanel', new ControlPanelViewProvider()))
 

@@ -10,6 +10,9 @@ export class SettingsManager {
   static SYNC_KEY = 'metersphere.syncEnabled'
   static DEBUG_KEY = 'metersphere.debugEnabled'
   static MS_URL_KEY = 'metersphere.msUrl'
+  static EXPORT_FORMAT_KEY = 'metersphere.exportFormat'
+  static SERVER_VERSION_KEY = 'metersphere.serverVersion'
+  static REJECT_UNAUTHORIZED_KEY = 'metersphere.rejectUnauthorized'
 
   static getMsUrl(): string | undefined {
     return vscode.workspace.getConfiguration().get<string>(SettingsManager.MS_URL_KEY)
@@ -67,6 +70,26 @@ export class SettingsManager {
 
   static setDebugEnabled(enabled: boolean): void {
     vscode.workspace.getConfiguration().update(SettingsManager.DEBUG_KEY, enabled, vscode.ConfigurationTarget.Global)
+  }
+
+  static getExportFormat(): string {
+    return vscode.workspace.getConfiguration().get<string>(SettingsManager.EXPORT_FORMAT_KEY) ?? 'postman'
+  }
+
+  static setExportFormat(format: string): void {
+    vscode.workspace.getConfiguration().update(SettingsManager.EXPORT_FORMAT_KEY, format, vscode.ConfigurationTarget.Global)
+  }
+
+  static getServerVersion(): string {
+    return 'v2'
+  }
+
+  static isRejectUnauthorized(): boolean {
+    return vscode.workspace.getConfiguration().get<boolean>(SettingsManager.REJECT_UNAUTHORIZED_KEY) ?? true
+  }
+
+  static setRejectUnauthorized(value: boolean): void {
+    vscode.workspace.getConfiguration().update(SettingsManager.REJECT_UNAUTHORIZED_KEY, value, vscode.ConfigurationTarget.Global)
   }
 
   static isConfigured(): boolean {

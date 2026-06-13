@@ -38,4 +38,116 @@ describe('NavigatorTreeDataProvider', () => {
     expect(item.id).toBe('api-1')
     expect(item.label).toBe('Get Users')
   })
+
+  test('project expansion returns only top-level modules', async () => {
+    provider.setFetchFn(async (_method, url) => {
+      if (url.includes('/module/list/')) {
+        return {
+          status: 200,
+          headers: {},
+          durationMs: 0,
+          body: {
+            data: [
+              { id: 'mod-1', name: 'User Module', parentId: 'proj-1', projectId: 'proj-1' },
+              { id: 'mod-1-1', name: 'User Submodule', parentId: 'mod-1', projectId: 'proj-1' },
+            ],
+          },
+        }
+      }
+      return { status: 200, headers: {}, durationMs: 0, body: { data: [] } }
+    })
+
+    const project = new NavigatorNode({ id: 'proj-1', name: 'Project', type: NodeType.PROJECT })
+    const children = await provider.getChildren(project)
+    expect(children.map(child => child.id)).toEqual(['mod-1'])
+  })
+
+  test('module expansion returns child modules before APIs', async () => {
+    provider.setFetchFn(async (method, url, _headers, body) => {
+      if (url.includes('/module/list/')) {
+        return {
+          status: 200,
+          headers: {},
+          durationMs: 0,
+          body: {
+            data: [
+              { id: 'mod-1', name: 'User Module', parentId: 'proj-1', projectId: 'proj-1' },
+              { id: 'mod-1-1', name: 'User Submodule', parentId: 'mod-1', projectId: 'proj-1' },
+            ],
+          },
+        }
+      }
+
+      if (method === 'POST' && url.includes('/definition/list/all') && (body as any)?.moduleIds?.[0] === 'mod-1') {
+        return {
+          status: 200,
+          headers: {},
+          durationMs: 0,
+          body: {
+            data: [
+              { id: 'api-1', name: 'Get Users', path: '/api/users', method: 'GET', moduleId: 'mod-1', projectId: 'proj-1' },
+            ],
+          },
+        }
+      }
+
+      return { status: 200, headers: {}, durationMs: 0, body: { data: [] } }
+    })
+
+    const moduleNode = new NavigatorNode({
+      id: 'mod-1',
+      name: 'User Module',
+      type: NodeType.MODULE,
+      projectId: 'proj-1',
+    })
+
+    const children = await provider.getChildren(moduleNode)
+    expect(children.map(child => child.id)).toEqual(['mod-1-1', 'api-1'])
+  })
+
+  test('module expansion returns stored recursive child modules before APIs', async () => {
+    provider.setFetchFn(async (method, url, _headers, body) => {
+      if (method === 'POST' && url.includes('/definition/list/all') && (body as any)?.moduleIds?.[0] === 'mod-1') {
+        return {
+          status: 200,
+          headers: {},
+          durationMs: 0,
+          body: {
+            data: [
+              { id: 'api-1', name: 'Get Users', path: '/api/users', method: 'GET', moduleId: 'mod-1', projectId: 'proj-1' },
+            ],
+          },
+        }
+      }
+
+      return { status: 200, headers: {}, durationMs: 0, body: { data: [] } }
+    })
+
+    const moduleNode = new NavigatorNode({
+      id: 'mod-1',
+      name: 'Root Module',
+      type: NodeType.MODULE,
+      projectId: 'proj-1',
+    })
+    const childNode = new NavigatorNode({
+      id: 'mod-1-1',
+      name: 'Child Module',
+      type: NodeType.MODULE,
+      parentId: 'mod-1',
+      projectId: 'proj-1',
+    })
+    const grandchildNode = new NavigatorNode({
+      id: 'mod-1-1-1',
+      name: 'Grandchild Module',
+      type: NodeType.MODULE,
+      parentId: 'mod-1-1',
+      projectId: 'proj-1',
+    })
+    childNode.addChild(grandchildNode)
+    moduleNode.addChild(childNode)
+
+    const children = await provider.getChildren(moduleNode)
+    expect(children.map(child => child.id)).toEqual(['mod-1-1', 'api-1'])
+    expect(children[0].getChildren().map(child => child.id)).toEqual(['mod-1-1-1'])
+  })
 })

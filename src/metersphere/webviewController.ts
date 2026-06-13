@@ -20,7 +20,7 @@ export class WebViewController {
       enableScripts: true
     })
     this.panel.webview.html = this.getHtml()
-    
+
     // Fetch environments on open
     this.fetchEnvironments()
     
@@ -46,7 +46,7 @@ export class WebViewController {
             return
           }
           
-          let reqPayload = payload as { 
+          const reqPayload = payload as {
             url: string; 
             method: string; 
             headers?: Record<string, string>; 
@@ -65,13 +65,12 @@ export class WebViewController {
           if (resolvedBody) {
             resolvedBody = resolveVariables(resolvedBody, this.selectedEnvVars)
           }
-          
           const headers: Record<string, string> = resolvedHeaders
           headers['accessKey'] = accessKey
           headers['signature'] = SettingsManager.generateSignature(accessKey, secretKey)
           
           DebugLogger.log('Debugger', 'Sending request', { 
-            url: resolvedUrl, 
+            url: resolvedUrl,
             method: reqPayload.method,
             env: this.selectedEnvName || 'none',
             headers: Object.keys(headers)
@@ -280,7 +279,7 @@ export class WebViewController {
     <!-- Left Panel: Request -->
     <div class="left-panel">
       <div class="section-title">Request</div>
-      
+
       <div class="form-group">
         <label for="envSelect">Environment</label>
         <select id="envSelect">

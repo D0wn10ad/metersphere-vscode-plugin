@@ -127,6 +127,7 @@ export class CommandRouter {
           const url = result.url ?? ''
           let hostname = url
           try { hostname = new URL(url).hostname } catch { /* use as-is */ }
+          await SidebarView.loadProjectModules()
           vscode.window.showInformationMessage('Connected to ' + hostname)
         } else {
           vscode.window.showErrorMessage('Connection failed: ' + (result.error ?? 'Unknown error'))
