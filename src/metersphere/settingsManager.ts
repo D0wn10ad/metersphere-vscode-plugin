@@ -13,6 +13,7 @@ export class SettingsManager {
   static EXPORT_FORMAT_KEY = 'metersphere.exportFormat'
   static SERVER_VERSION_KEY = 'metersphere.serverVersion'
   static REJECT_UNAUTHORIZED_KEY = 'metersphere.rejectUnauthorized'
+  static CURRENT_USER_ID_KEY = 'metersphere.currentUserId'
 
   static getMsUrl(): string | undefined {
     return vscode.workspace.getConfiguration().get<string>(SettingsManager.MS_URL_KEY)
@@ -90,6 +91,14 @@ export class SettingsManager {
 
   static setRejectUnauthorized(value: boolean): void {
     vscode.workspace.getConfiguration().update(SettingsManager.REJECT_UNAUTHORIZED_KEY, value, vscode.ConfigurationTarget.Global)
+  }
+
+  static getCurrentUserId(): string | undefined {
+    return vscode.workspace.getConfiguration().get<string>(SettingsManager.CURRENT_USER_ID_KEY)
+  }
+
+  static setCurrentUserId(id: string): void {
+    vscode.workspace.getConfiguration().update(SettingsManager.CURRENT_USER_ID_KEY, id, vscode.ConfigurationTarget.Global)
   }
 
   static isConfigured(): boolean {

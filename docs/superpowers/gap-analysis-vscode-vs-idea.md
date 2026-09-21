@@ -163,10 +163,10 @@ IDEA has full Chinese/English localization. VSCode plugin is English-only.
 | 4 | V2/V3 mode selection | **P1** | Medium | `sidebarView.ts`, `syncService.ts` |
 | 5 | URL `/api` suffix auto-append | **P1** | Small | `settingsManager.ts` |
 | 6 | State caching | **P1** | Medium | `navigatorEngine.ts`, `connectionManager.ts` |
-| 7 | Retrieve config workflow | **P1** | Small | `sidebarView.ts` |
+| 7 | Retrieve config workflow | **P1** ✅ | Small | `sidebarView.ts` — auto-discovers workspace/project |
 | 8 | Self-signed cert support | **P2** | Small | `httpClient.ts` |
 | 9 | authManager audit | **P2** | Small | `sidebarView.ts` |
-| 10 | userId in project list | **P2** | Small | `navigatorEngine.ts` |
+| 10 | userId in project list | **P2** ✅ | Small | `navigatorEngine.ts`, `sidebarView.ts` |
 | 11 | i18n | **P2** | Large | All UI modules |
 
 ---
@@ -227,3 +227,30 @@ The following features are **not gaps** today (neither IDEA V3 V2-mode nor VSCod
 1. Verify whether V3 server keeps the same `GET /api/environment/list/{projectId}` endpoint
 2. Check if V3 import API requires `environmentId` in the request body (the IDEA V3 mode body currently omits it)
 3. If environment CRUD from IDE is desired, implement against MeterSphere V3 environment API endpoints
+
+### 2. URL `/api` Suffix Auto-Append
+
+| Aspect | Current Status | KIV Reasoning |
+|--------|---------------|----------------|
+| IDEA V3 (V2 mode) | `MsBaseTransferV2.java` appends `/api/` to the base URL if missing. This is a UX convenience so users can paste just `http://host:port` without the path. | Minor convenience, not a functional gap. The VSCode plugin requires the full URL including `/api/`. |
+| VSCode plugin | User must enter the full URL (including `/api/`). No auto-append logic exists. | Users copy the URL from MeterSphere server admin panel which includes `/api/`. |
+
+**Finding:** This is a non-functional gap. The IDEA plugin provides a convenience prefix normalization, but the VSCode plugin expects users to enter the complete URL. Since MeterSphere admin interfaces consistently display URLs with the `/api/` suffix, this is not a source of confusion in practice.
+
+### 3. V2/V3 Mode Selection
+
+| Aspect | Current Status | KIV Reasoning |
+|--------|---------------|----------------|
+| IDEA V3 (V2 mode) | `UploadSettingPaneV2.java` has a dropdown to select "V2 Server" vs "V3 Server" mode. V2 mode uses the `/api/` prefix endpoints; V3 mode uses a different API surface. | The V2/V3 distinction affects request serialization format, endpoint paths, and auth mechanism. Without a V3 server test instance, the mode dropdown cannot be validated. |
+| VSCode plugin | No mode selector. Only V2-compatible endpoints are used. | Deferred until V3 server support is actively needed. The Postman-format upload (P0 gap) already covers the primary use case. |
+
+**Finding:** The IDEA plugin's V3 mode is unstable and may fail in practice (per analysis of `MsBaseTransferV2.java`). There is no known V3 server deployment in the target user base. The V2 mode (what this plugin implements) is the correct and stable path.
+
+**Action if V3 support is needed:**
+1. Add a `metersphere.serverVersion` setting with values `"v2"` | `"v3"` in `settingsManager.ts`
+2. Route API calls through different endpoint prefixes based on the setting
+3. Adjust request body format in `syncService.ts` based on mode
+
+**Action if implemented:**
+1. Add regex check in `settingsManager.ts` → `getMsUrl()` getter: if URL doesn't end with `/api` or `/api/`, append `/api`
+2. Store the normalized URL (same key, no new setting needed)

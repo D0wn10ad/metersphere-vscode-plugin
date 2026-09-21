@@ -55,8 +55,22 @@ export class SidebarView {
 
     try {
       const headers = SettingsManager.buildAuthHeaders('application/json')
-      const workspaceId = SettingsManager.getWorkspaceId()
-      const projectId = SettingsManager.getProjectId()
+      let workspaceId = SettingsManager.getWorkspaceId()
+      let projectId = SettingsManager.getProjectId()
+
+      let autoWorkspaceId: string | undefined
+      if (!workspaceId) {
+        const workspacesResp = await fetch(`${msUrl}/api/workspace/list/userworkspace`, { headers })
+        if (workspacesResp.ok) {
+          const workspacesData = await workspacesResp.json()
+          const workspaces = workspacesData.data || []
+          if (workspaces.length > 0) {
+            autoWorkspaceId = String(workspaces[0].id)
+            workspaceId = autoWorkspaceId
+            SettingsManager.setWorkspaceId(autoWorkspaceId)
+          }
+        }
+      }
 
       if (!workspaceId) {
         SidebarView.postMessage({ command: 'loadProjectError', data: { message: 'No workspace selected. Use Navigator to select a workspace.' } })
@@ -68,10 +82,13 @@ export class SidebarView {
         projectId: projectId ?? 'none'
       })
 
+      const projectBody: Record<string, unknown> = { workspaceIds: [workspaceId] }
+      const currentUserId = SettingsManager.getCurrentUserId()
+      if (currentUserId) projectBody.userId = currentUserId
       const projectsResp = await fetch(`${msUrl}/api/project/list/related`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ workspaceIds: [workspaceId] })
+        body: JSON.stringify(projectBody)
       })
       if (!projectsResp.ok) {
         SidebarView.postMessage({ command: 'loadProjectError', data: { message: `Failed to load projects: HTTP ${projectsResp.status}` } })
@@ -93,6 +110,9 @@ export class SidebarView {
       if (savedProjectId) {
         const found = projects.find((p: any) => p.id === savedProjectId)
         if (found) targetProject = found
+      }
+      if (!savedProjectId && targetProject) {
+        SettingsManager.setProjectId(targetProject.id)
       }
 
       const modulesResp = await fetch(`${msUrl}/api/api/module/list/${targetProject.id}/HTTP`, { headers })
