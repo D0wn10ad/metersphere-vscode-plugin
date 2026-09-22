@@ -254,3 +254,25 @@ The following features are **not gaps** today (neither IDEA V3 V2-mode nor VSCod
 **Action if implemented:**
 1. Add regex check in `settingsManager.ts` → `getMsUrl()` getter: if URL doesn't end with `/api` or `/api/`, append `/api`
 2. Store the normalized URL (same key, no new setting needed)
+
+---
+
+## Release Automation
+
+### GitHub Actions Release Automation
+
+Status: Stage 1 implemented
+
+The repository now targets a tag-driven GitHub Actions release path that:
+
+- compiles the extension
+- runs the Jest suite
+- packages a `.vsix`
+- publishes that package as a GitHub Release asset
+
+This improves release repeatability and reduces manual packaging risk, but it is operational tooling rather than end-user runtime functionality.
+
+### Keep In View: Marketplace Publishing
+
+Automatic publishing to Visual Studio Marketplace and Open VSX remains deferred.
+This requires token management, additional release policy decisions, and post-release confidence in the Stage 1 pipeline.

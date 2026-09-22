@@ -10,6 +10,7 @@ node_modules/vscode
 .github
 .worktrees
 .opencode
+.codegraph
 tsconfig.json
 jest.config.js
 .eslintrc.js
