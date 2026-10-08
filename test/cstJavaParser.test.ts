@@ -77,10 +77,11 @@ describe('cstJavaParser', () => {
       expect(result.apis[1].position!.line).toBe(33); // @RequestMapping line
     });
 
-    it('emits parameters: [] (parameter extraction is T7)', () => {
-      for (const api of result.apis) {
-        expect(api.parameters).toEqual([]);
-      }
+    it('extracts parameters via the composed param parser (T7+T8)', () => {
+      expect(result.apis[0].parameters).toHaveLength(2);
+      expect(result.apis[0].parameters[0].name).toBe('q');
+      expect(result.apis[0].parameters[0].in).toBe('query');
+      expect(result.apis[1].parameters).toEqual([]); // method 2 has no parameters
     });
   });
 

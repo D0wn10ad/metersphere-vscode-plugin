@@ -22,8 +22,9 @@
 
 import { ParsedApi, ParsedClass, ParseResult } from '../javaParser';
 import { loadJavaParser } from './loadJavaParser';
-import { CstNode, CstToken, findAll, findFirst, locationOf } from './cstWalk';
+import { CstNode, CstToken, findAll, findFirst, locationOf, text } from './cstWalk';
 import { AnnotationResult, AnnotationValue, firstString, readAnnotation } from './annotationReader';
+import { parseParameters } from './cstParamParser';
 
 /** HTTP verbs representable in `ParsedApi.method` (HEAD/OPTIONS collapse to GET). */
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
@@ -165,7 +166,7 @@ function parseMethod(md: CstNode, source: string, basePath: string): ParsedApi |
     path,
     fullPath: basePath + path,
     summary,
-    parameters: [],
+    parameters: parseParameters(md, source),
   };
   // REAL position from the mapping annotation node (1-based line — the STORED
   // shape; the hover consumer subtracts 1, see T10). Never a bogus 0 line.
@@ -174,6 +175,37 @@ function parseMethod(md: CstNode, source: string, basePath: string): ParsedApi |
     api.position = { line: loc.startLine, column: loc.startColumn };
   }
   return api;
+}
+
+/**
+ * True when the source declares @RestController or @Controller on a top-level class.
+ * Reuses the CST (real annotation nodes, never a substring test). Throws on malformed
+ * Java — callers run it inside their own try/catch.
+ */
+export function hasControllerAnnotation(source: string): boolean {
+  const tree = loadJavaParser().parse(source) as unknown as CstNode;
+  const ocu = findFirst(tree, 'ordinaryCompilationUnit');
+  if (!ocu) {
+    return false;
+  }
+  const typeDecls = (ocu.children['typeDeclaration'] || []) as CstNode[];
+  for (const td of typeDecls) {
+    const cd = findFirst(td, 'classDeclaration');
+    if (!cd) {
+      continue;
+    }
+    const mods = (cd.children['classModifier'] || []) as CstNode[];
+    for (const mod of mods) {
+      for (const ann of (mod.children['annotation'] || []) as CstNode[]) {
+        const tn = findFirst(ann, 'typeName');
+        const name = tn ? text(tn, source).trim() : '';
+        if (name === 'RestController' || name === 'Controller') {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
 }
 
 /**
