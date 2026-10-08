@@ -241,16 +241,20 @@
   "scripts": {
     "compile": "tsc -p tsconfig.json",
     "watch": "tsc -watch -p tsconfig.json",
-    "test": "jest"
+    "test": "jest",
+    "build:cst-vendor": "node scripts/build-cst-vendor.mjs",
+    "precompile": "npm run build:cst-vendor",
+    "pretest": "npm run build:cst-vendor"
   },
   "dependencies": {
     "asynckit": "^0.4.0",
     "form-data": "^4.0.5",
-    "java-ast": "^0.4.1"
+    "java-parser": "^3.0.1"
   },
   "devDependencies": {
     "@types/jest": "^29.0.0",
     "@types/node": "^20.11.7",
+    "esbuild": "^0.28.2",
     "jest": "^29.0.0",
     "ts-jest": "^29.0.0",
     "ts-node": "^10.9.1",
