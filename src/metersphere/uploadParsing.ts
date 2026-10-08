@@ -7,6 +7,8 @@
 
 import { ParseResult } from './javaParser';
 import { parseJava } from './javaParserDispatch';
+import { getUploadSymbolIndex } from './openApiBuilder';
+import { DebugLogger } from './debugLogger';
 
 export interface UploadedParse {
   result: ParseResult;
@@ -21,8 +23,19 @@ export async function parseUploadedFiles(
   readText: (p: string) => Promise<string>,
 ): Promise<UploadedParse> {
   const result: ParseResult = { classes: [], apis: [] };
+  const symbolIndex = getUploadSymbolIndex();
   for (const filePath of filePaths) {
     const code = await readText(filePath);
+    try {
+      // Register the source so OpenApiBuilder's DTO expansion can resolve types
+      // declared in any uploaded file (same-file and cross-file alike).
+      symbolIndex.register(code, filePath);
+    } catch (err) {
+      DebugLogger.log('Sync', 'Symbol registration failed for file; DTO expansion may be limited', {
+        filePath,
+        error: String(err),
+      });
+    }
     const parsed = parseJava(code, filePath);
     result.classes.push(...parsed.result.classes);
     result.apis.push(...parsed.result.apis);

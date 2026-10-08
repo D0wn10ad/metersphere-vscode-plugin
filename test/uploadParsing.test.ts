@@ -7,6 +7,7 @@
  */
 
 import { parseUploadedFiles } from '../src/metersphere/uploadParsing';
+import { getUploadSymbolIndex, resetUploadSymbolIndex } from '../src/metersphere/openApiBuilder';
 
 const controllerSrc = (path: string): string =>
   [
@@ -63,5 +64,34 @@ describe('uploadParsing', () => {
     expect(fileCount).toBe(0);
     expect(result.classes).toEqual([]);
     expect(result.apis).toEqual([]);
+  });
+
+  it('registers parsed sources so the OpenAPI builder resolves DTO types from uploaded files', async () => {
+    resetUploadSymbolIndex();
+    const dtoSrc = [
+      'package com.example.dto;',
+      'public class EdgeDTO {',
+      '  private String name;',
+      '  private int count;',
+      '}',
+    ].join('\n');
+    const controllerSrc = [
+      'package com.example.demo;',
+      'import org.springframework.web.bind.annotation.*;',
+      '@RestController',
+      'public class C {',
+      '  @PostMapping("/e")',
+      '  public String e(@RequestBody EdgeDTO dto) { return "x"; }',
+      '}',
+    ].join('\n');
+    const sources: Record<string, string> = { 'c.java': controllerSrc, 'dto.java': dtoSrc };
+
+    await parseUploadedFiles(['c.java', 'dto.java'], async (p) => sources[p]);
+
+    // The seam registered both files; the builder's sync lookup now resolves EdgeDTO.
+    const dto = getUploadSymbolIndex().resolveSync('EdgeDTO');
+    expect(dto).toBeDefined();
+    expect(dto!.fields.map((f) => f.name)).toEqual(['name', 'count']);
+    resetUploadSymbolIndex();
   });
 });
