@@ -239,16 +239,16 @@ export class SidebarView {
       }
 
       const format = SettingsManager.getExportFormat()
-      const isSwagger = format === 'swagger2'
+      const isOpenApi = format === 'swagger3'
 
-      SidebarView.postMessage({ command: 'uploadProgress', data: { message: `Converting to ${isSwagger ? 'OpenAPI' : 'Postman'} format...` } })
+      SidebarView.postMessage({ command: 'uploadProgress', data: { message: `Converting to ${isOpenApi ? 'OpenAPI' : 'Postman'} format...` } })
 
       const collectionName = uploadData.files.length === 1
         ? uploadData.files[0].split(/[/\\]/).pop()?.replace('.java', '') || 'Java API'
         : 'Java APIs'
 
       let jsonContent: string
-      if (isSwagger) {
+      if (isOpenApi) {
         const doc = JSON.parse(SyncService.toOpenApiCollection(allApis, collectionName))
         doc.paths = applyContextPathToPaths(doc.paths, uploadData.contextPath)
         jsonContent = JSON.stringify(doc, null, 2)
@@ -308,7 +308,7 @@ export class SidebarView {
       } else {
         const bodyModeId = isFullCoverage ? 'fullCoverage' : 'incrementalMerge'
         requestJson = JSON.stringify({
-          platform: isSwagger ? 'Swagger2' : 'Postman',
+          platform: isOpenApi ? 'Swagger3' : 'Postman',
           moduleId,
           projectId,
           modeId: bodyModeId,
@@ -755,7 +755,7 @@ export class SidebarView {
       <label>Export Format</label>
       <select id="exportFormatSelect">
         <option value="postman" ${exportFormat === 'postman' ? 'selected' : ''}>Postman</option>
-        <option value="swagger2" ${exportFormat === 'swagger2' ? 'selected' : ''}>OpenAPI/Swagger 2</option>
+        <option value="swagger3" ${exportFormat === 'swagger3' ? 'selected' : ''}>OpenAPI 3 (Swagger 3)</option>
       </select>
     </div>
     <div class="checkbox-label">

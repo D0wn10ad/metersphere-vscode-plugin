@@ -84,9 +84,15 @@
         },
         "metersphere.exportFormat": {
           "type": "string",
-          "default": "postman",
-          "enum": ["postman", "swagger2"],
-          "description": "API definition export format for MeterSphere upload"
+          "default": "swagger3",
+          "enum": ["postman", "swagger3"],
+          "description": "API definition export format for MeterSphere upload (a legacy stored 'swagger2' is treated as 'swagger3')"
+        },
+        "metersphere.serverVersion": {
+          "type": "string",
+          "default": "v3",
+          "enum": ["v2", "v3"],
+          "description": "MeterSphere server version the upload targets (affects coverModule/coverData mode)"
         },
         "metersphere.rejectUnauthorized": {
           "type": "boolean",

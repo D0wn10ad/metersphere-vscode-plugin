@@ -73,7 +73,9 @@ export class SettingsManager {
   }
 
   static getExportFormat(): string {
-    return vscode.workspace.getConfiguration().get<string>(SettingsManager.EXPORT_FORMAT_KEY) ?? 'postman'
+    const stored = vscode.workspace.getConfiguration().get<string>(SettingsManager.EXPORT_FORMAT_KEY) ?? 'swagger3'
+    // Legacy mapping: a stored 'swagger2' always produced OpenAPI 3.0.3 anyway.
+    return stored === 'swagger2' ? 'swagger3' : stored
   }
 
   static setExportFormat(format: string): void {
@@ -81,7 +83,7 @@ export class SettingsManager {
   }
 
   static getServerVersion(): string {
-    return 'v2'
+    return vscode.workspace.getConfiguration().get<string>(SettingsManager.SERVER_VERSION_KEY) ?? 'v3'
   }
 
   static isRejectUnauthorized(): boolean {
