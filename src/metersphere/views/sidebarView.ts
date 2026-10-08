@@ -371,7 +371,9 @@ export class SidebarView {
       const response = await fetch(`${msUrl}/api/api/definition/import`, {
         method: 'POST',
         headers: uploadHeaders,
-        body: bodyBuffer,  // Use the pre-computed buffer instead of streaming formData
+        // Buffer<ArrayBufferLike> is not assignable to the DOM BodyInit union under
+        // @types/node 20.x typings; undici fetch accepts a Buffer at runtime.
+        body: bodyBuffer as unknown as BodyInit,  // Use the pre-computed buffer instead of streaming formData
       })
 
       const responseText = await response.text()
