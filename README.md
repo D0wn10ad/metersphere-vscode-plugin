@@ -195,7 +195,6 @@ src/
     syncService.ts              # Sync upload service
     javaFileScanner.ts          # Java file discovery
     javaParser.ts               # Java annotation parser
-    javaParserAst.ts            # AST-based Java parser
     contextHolder.ts            # Global extension context holder
     debugLogger.ts              # Debug logging to Output panel
     authHeader.js               # Auth header generation
