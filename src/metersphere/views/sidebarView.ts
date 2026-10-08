@@ -6,6 +6,7 @@ import FormData from 'form-data'
 import { DebugLogger } from '../debugLogger'
 import { ContextHolder } from '../contextHolder'
 import { parseUploadedFiles } from '../uploadParsing'
+import { prependContextPath, applyContextPathToPaths } from '../contextPath'
 
 export class SidebarView {
   private static views: Record<string, vscode.WebviewView> = {}
@@ -248,16 +249,17 @@ export class SidebarView {
 
       let jsonContent: string
       if (isSwagger) {
-        jsonContent = SyncService.toOpenApiCollection(allApis, collectionName)
+        const doc = JSON.parse(SyncService.toOpenApiCollection(allApis, collectionName))
+        doc.paths = applyContextPathToPaths(doc.paths, uploadData.contextPath)
+        jsonContent = JSON.stringify(doc, null, 2)
       } else {
         const postmanCollection = SyncService.toPostmanCollection(allApis, collectionName)
 
-        if (uploadData.contextPath) {
-          for (const item of postmanCollection.item) {
-            const path = '/' + uploadData.contextPath.replace(/^\//, '') + '/' + item.request.url.path.join('/')
-            item.request.url.raw = path
-            item.request.url.path = path.split('/').filter(Boolean)
-          }
+        for (const item of postmanCollection.item) {
+          const joined = (item.request.url.path || []).join('/')
+          const prefixed = prependContextPath('/' + joined, uploadData.contextPath)
+          item.request.url.raw = prefixed
+          item.request.url.path = prefixed.split('/').filter(Boolean)
         }
 
         jsonContent = JSON.stringify(postmanCollection, null, 2)
