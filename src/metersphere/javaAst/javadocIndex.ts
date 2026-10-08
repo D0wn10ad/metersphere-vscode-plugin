@@ -26,6 +26,14 @@ export interface JavadocIndex {
    * `line` (the summary), or `undefined` when there is none.
    */
   summaryFor(line: number): string | undefined;
+  /**
+   * Summary of the Javadoc whose `endLine` is EXACTLY `line - 1` (immediately
+   * adjacent to the declaration) — prevents an earlier declaration's Javadoc
+   * leaking into a later one.
+   */
+  summaryForAdjacent(line: number): string | undefined;
+  /** Full body of the immediately adjacent Javadoc (same adjacency rule). */
+  bodyForAdjacent(line: number): string | undefined;
 }
 
 const JAVADOC_START = '/**';
@@ -92,5 +100,23 @@ export function buildJavadocIndex(source: string): JavadocIndex {
     return first;
   }
 
-  return { forLine, summaryFor };
+  function adjacent(line: number): JavadocComment | undefined {
+    return comments.find((c) => c.endLine === line - 1);
+  }
+
+  function summaryForAdjacent(line: number): string | undefined {
+    const c = adjacent(line);
+    if (!c) {
+      return undefined;
+    }
+    const body = bodyLines(c.image).join('\n');
+    return body.split('\n').find((l) => l.length > 0 && !l.startsWith('@'));
+  }
+
+  function bodyForAdjacent(line: number): string | undefined {
+    const c = adjacent(line);
+    return c ? bodyLines(c.image).join('\n') : undefined;
+  }
+
+  return { forLine, summaryFor, summaryForAdjacent, bodyForAdjacent };
 }

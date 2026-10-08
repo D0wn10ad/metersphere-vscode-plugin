@@ -25,6 +25,7 @@ import { loadJavaParser } from './loadJavaParser';
 import { CstNode, CstToken, findAll, findFirst, locationOf, text } from './cstWalk';
 import { AnnotationResult, AnnotationValue, firstString, readAnnotation } from './annotationReader';
 import { parseParameters } from './cstParamParser';
+import { buildJavadocIndex, JavadocIndex } from './javadocIndex';
 
 /** HTTP verbs representable in `ParsedApi.method` (HEAD/OPTIONS collapse to GET). */
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
@@ -102,7 +103,8 @@ function requestMappingVerb(ann: AnnotationResult): HttpMethod {
 
 /**
  * Summary priority chain: @Operation(summary) > @ApiOperation(value|summary) >
- * [@Description] > `${method} ${path || '/'}`. Regex parity: the specific-verb
+ * [@Description] — returns undefined when nothing matched so the caller can apply
+ * the Javadoc baseline and the generated fallback. Regex parity: the specific-verb
  * chain includes the @Description fallback; the method-level @RequestMapping
  * chain does NOT (javaParser.ts:284-298 vs :554-565).
  */
@@ -111,7 +113,7 @@ function resolveSummary(
   method: HttpMethod,
   path: string,
   hasDescriptionFallback: boolean,
-): string {
+): string | undefined {
   const op = anns.find((a) => a.name === 'Operation');
   if (op) {
     const s = firstString(op.values['summary']);
@@ -135,11 +137,11 @@ function resolveSummary(
       }
     }
   }
-  return `${method} ${path || '/'}`;
+  return undefined;
 }
 
 /** Parse one methodDeclaration into a ParsedApi, or null when it has no mapping annotation. */
-function parseMethod(md: CstNode, source: string, basePath: string): ParsedApi | null {
+function parseMethod(md: CstNode, source: string, basePath: string, javadoc: JavadocIndex): ParsedApi | null {
   const mods = (md.children['methodModifier'] || []) as CstNode[];
   const anns = annotationsFromModifiers(mods, source);
 
@@ -154,12 +156,21 @@ function parseMethod(md: CstNode, source: string, basePath: string): ParsedApi |
     ? MAPPING_VERBS[specific.read.name]
     : requestMappingVerb(requestMapping!.read);
   const path = mappingPath(mapping.read);
-  const summary = resolveSummary(
-    anns.map((a) => a.read),
-    method,
-    path,
-    specific !== undefined,
-  );
+
+  // Javadoc baseline: the ADJACENT Javadoc (endLine === declarationLine - 1) is the
+  // default summary when no explicit annotation provides one; explicit annotations
+  // always win, and the Javadoc beats the generated fallback.
+  const methodLine = locationOf(md)?.startLine;
+  const javadocSummary = methodLine !== undefined ? javadoc.summaryForAdjacent(methodLine) : undefined;
+  const summary =
+    resolveSummary(anns.map((a) => a.read), method, path, specific !== undefined) ??
+    javadocSummary ??
+    `${method} ${path || '/'}`;
+
+  // description: the Javadoc body when there is no @Operation/@ApiOperation
+  const hasApiOperation = anns.some((a) => a.read.name === 'Operation' || a.read.name === 'ApiOperation');
+  const description =
+    !hasApiOperation && methodLine !== undefined ? javadoc.bodyForAdjacent(methodLine) : undefined;
 
   const api: ParsedApi = {
     method,
@@ -168,6 +179,9 @@ function parseMethod(md: CstNode, source: string, basePath: string): ParsedApi |
     summary,
     parameters: parseParameters(md, source),
   };
+  if (description !== undefined) {
+    api.description = description;
+  }
   // REAL position from the mapping annotation node (1-based line — the STORED
   // shape; the hover consumer subtracts 1, see T10). Never a bogus 0 line.
   const loc = locationOf(mapping.node);
@@ -223,6 +237,7 @@ export function parseJavaCst(source: string, uri: string): ParseResult {
   // shallow CstElement union exceeds TS's stack-depth limit (TS2321). Sever the
   // deep type with a double cast — the runtime shape IS our CstNode.
   const tree = loadJavaParser().parse(source) as unknown as CstNode;
+  const javadoc = buildJavadocIndex(source);
   const ocu = findFirst(tree, 'ordinaryCompilationUnit');
   if (!ocu) {
     return result;
@@ -256,7 +271,7 @@ export function parseJavaCst(source: string, uri: string): ParseResult {
     const classBody = ncd ? findFirst(ncd, 'classBody') : undefined;
     if (classBody) {
       for (const md of findAll(classBody, 'methodDeclaration')) {
-        const api = parseMethod(md, source, basePath);
+        const api = parseMethod(md, source, basePath, javadoc);
         if (api) {
           parsedClass.apis.push(api);
           result.apis.push(api);
