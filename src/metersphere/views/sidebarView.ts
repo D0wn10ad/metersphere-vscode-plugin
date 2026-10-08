@@ -5,6 +5,7 @@ import { SyncService } from '../syncService'
 import FormData from 'form-data'
 import { DebugLogger } from '../debugLogger'
 import { ContextHolder } from '../contextHolder'
+import { parseUploadedFiles } from '../uploadParsing'
 
 export class SidebarView {
   private static views: Record<string, vscode.WebviewView> = {}
@@ -210,15 +211,11 @@ export class SidebarView {
     SidebarView.postMessage({ command: 'uploadProgress', data: { message: 'Parsing Java files...' } })
     
     try {
-      let allApis = { classes: [] as any[], apis: [] as any[] }
-      
-      for (const filePath of uploadData.files) {
-        const doc = await vscode.workspace.openTextDocument(filePath)
-        const code = doc.getText()
-        const parsed = JavaParser.parseSource(code, filePath)
-        allApis.classes.push(...parsed.classes)
-        allApis.apis.push(...parsed.apis)
-      }
+      const parsed = await parseUploadedFiles(
+        uploadData.files,
+        async (p) => (await vscode.workspace.openTextDocument(p)).getText(),
+      )
+      let allApis = parsed.result
 
       if (allApis.apis.length === 0) {
         SidebarView.postMessage({ command: 'uploadError', data: { message: 'No @RestController or @Controller classes found in selected files' } })
@@ -232,7 +229,9 @@ export class SidebarView {
         SidebarView.postMessage({ command: 'javaExtMissing' })
       } else {
         try {
-          allApis = await JavaParser.enhanceWithJavadoc(allApis, uploadData.files[0])
+          for (const file of parsed.files) {
+            allApis = await JavaParser.enhanceWithJavadoc(allApis, file)
+          }
         } catch {
           // Javadoc enhancement failed, continue without it
         }
