@@ -23,6 +23,7 @@ export interface ParsedParameter {
   type?: string;
   description?: string;
   validation?: ValidationConstraint[];
+  defaultValue?: string;
 }
 
 export interface ParsedClass {
