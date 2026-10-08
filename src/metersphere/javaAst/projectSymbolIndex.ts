@@ -123,6 +123,14 @@ export class ProjectSymbolIndex {
     return undefined;
   }
 
+  /**
+   * Synchronous lookup through registration + cache ONLY (no LSP, no scan) — for
+   * the sync OpenApiBuilder.build path, whose signature cannot await.
+   */
+  resolveSync(typeName: string): ResolvedDto | undefined {
+    return this.cache.get(typeName) ?? this.localTypes.get(typeName);
+  }
+
   /** Time-boxed LSP symbol-provider resolution. A rejected call falls through. */
   private async resolveViaLsp(typeName: string): Promise<ResolvedDto | undefined> {
     try {

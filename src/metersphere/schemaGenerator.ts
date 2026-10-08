@@ -17,10 +17,10 @@ export class SchemaGenerator {
   }
 
   static stubObjectSchema(className: string): any {
+    void className
     return {
       type: 'object',
       properties: {},
-      description: `Schema for ${className} (field expansion requires Red Hat Java extension)`,
     }
   }
 

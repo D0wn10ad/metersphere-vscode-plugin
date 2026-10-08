@@ -7,7 +7,8 @@ export class TypeResolver {
       return genericsMatch[1].split(',')[0].trim()
     }
     if (['String', 'string'].includes(trimmed)) return 'string'
-    if (['int', 'long', 'double', 'float', 'Integer', 'Long', 'Double', 'Float', 'BigDecimal'].includes(trimmed)) return 'number'
+    if (['int', 'long', 'short', 'byte', 'Integer', 'Long', 'Short', 'Byte'].includes(trimmed)) return 'integer'
+    if (['double', 'float', 'Double', 'Float', 'BigDecimal'].includes(trimmed)) return 'number'
     if (['boolean', 'Boolean'].includes(trimmed)) return 'boolean'
     if (['void', 'Void'].includes(trimmed)) return null
     return trimmed
@@ -21,6 +22,7 @@ export class TypeResolver {
   static resolveTypeSchema(typeName: string): any {
     const primitives: Record<string, any> = {
       string: { type: 'string' },
+      integer: { type: 'integer' },
       number: { type: 'number' },
       boolean: { type: 'boolean' },
     }

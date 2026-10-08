@@ -16,10 +16,11 @@ describe('SchemaGenerator', () => {
     })
   })
 
-  test('stubObjectSchema returns object type with description', () => {
+  test('stubObjectSchema returns plain object type without apology text', () => {
     const stub = SchemaGenerator.stubObjectSchema('Foo')
     expect(stub.type).toBe('object')
-    expect(stub.description).toContain('Red Hat')
+    expect(stub.description).toBeUndefined()
+    expect(JSON.stringify(stub)).not.toContain('Red Hat')
   })
 
   test('registerType adds to registry', () => {
