@@ -226,7 +226,7 @@ export class SidebarView {
       const hasJavaExt = vscode.extensions.all.some((ext: any) => javaExts.includes(ext.id))
       
       if (!hasJavaExt) {
-        SidebarView.postMessage({ command: 'javaExtMissing' })
+        SidebarView.postMessage({ command: 'javaExtMissingJavadoc' })
       } else {
         try {
           for (const file of parsed.files) {
@@ -947,8 +947,11 @@ ${SidebarView.getThemeStyles()}
   <div class="info" style="padding:8px 12px;margin-bottom:12px;font-size:12px;">
     <strong>Export Java Controllers</strong> &mdash; Project: <strong id="currentProject">Loading...</strong>
   </div>
-  <div class="warning" id="javaExtWarning" style="display:none">
-    <p>For Javadoc support, install: <a href="#" id="javaExtLink">Language Support for Java</a></p>
+  <div class="warning" id="javaExtWarningJavadoc" style="display:none">
+    <p>Javadoc enrichment is unavailable; install <a href="#" id="javaExtLink">Language Support for Java</a> to enable it &mdash; parsing still works</p>
+  </div>
+  <div class="warning" id="javaExtWarningSchema" style="display:none">
+    <p>DTO field expansion is unavailable; request/response schemas will be stubs. Install <a href="#" id="schemaExtLink">Language Support for Java</a> to enable it.</p>
   </div>
   <div class="form-group">
     <label>Java Files</label>
@@ -1037,6 +1040,7 @@ let uploadEnabled = false;
   document.getElementById('uploadBtn').addEventListener('click', upload);
   document.getElementById('selectFilesBtn').addEventListener('click', function() { vscode.postMessage({ command: 'selectJavaFiles' }); });
   document.getElementById('javaExtLink').addEventListener('click', function(e) { e.preventDefault(); vscode.postMessage({ command: 'openExtension', data: 'redhat.java' }); });
+  document.getElementById('schemaExtLink').addEventListener('click', function(e) { e.preventDefault(); vscode.postMessage({ command: 'openExtension', data: 'redhat.java' }); });
   document.getElementById('settingsForm').addEventListener('submit', save);
   document.getElementById('testConnectionBtn').addEventListener('click', function() { vscode.postMessage({ command: 'testConnection' }); });
   document.getElementById('refreshEnvsBtn').addEventListener('click', refreshEnvs);
@@ -1195,8 +1199,12 @@ window.addEventListener('message', function(event) {
   } else if (msg.command === 'loadProjectError') {
     document.getElementById('currentProject').textContent = 'Error';
     showStatus(msg.data?.message || 'Failed to load project data', 'error');
-  } else if (msg.command === 'javaExtMissing') {
-    document.getElementById('javaExtWarning').style.display = 'block';
+  } else if (msg.command === 'javaExtMissingJavadoc') {
+    document.getElementById('javaExtWarningJavadoc').style.display = 'block';
+    document.getElementById('javaExtWarningSchema').style.display = 'none';
+  } else if (msg.command === 'javaExtMissingSchema') {
+    document.getElementById('javaExtWarningSchema').style.display = 'block';
+    document.getElementById('javaExtWarningJavadoc').style.display = 'none';
   } else if (msg.command === 'uploadProgress') {
     showStatus(msg.data?.message || '', 'loading');
   } else if (msg.command === 'uploadSuccess') {
@@ -1320,8 +1328,11 @@ window.addEventListener('message', function(event) {
     <p>Select .java files with @RestController or @Controller annotations.</p>
     <p>Project: <strong id="currentProject">Loading...</strong></p>
   </div>
-  <div class="warning" id="javaExtWarning" style="display:none">
-    <p>For Javadoc support, install: <a href="#" id="syncJavaExtLink">Language Support for Java</a></p>
+  <div class="warning" id="javaExtWarningJavadoc" style="display:none">
+    <p>Javadoc enrichment is unavailable; install <a href="#" id="syncJavaExtLink">Language Support for Java</a> to enable it &mdash; parsing still works</p>
+  </div>
+  <div class="warning" id="javaExtWarningSchema" style="display:none">
+    <p>DTO field expansion is unavailable; request/response schemas will be stubs. Install <a href="#" id="syncSchemaExtLink">Language Support for Java</a> to enable it.</p>
   </div>
   <div class="form-group">
     <label>Java Files</label>
@@ -1352,6 +1363,7 @@ window.addEventListener('message', function(event) {
     let uploadEnabled = false;
 
     document.getElementById('syncJavaExtLink').addEventListener('click', function(e) { e.preventDefault(); vscode.postMessage({ command: 'openExtension', data: 'redhat.java' }); });
+    document.getElementById('syncSchemaExtLink').addEventListener('click', function(e) { e.preventDefault(); vscode.postMessage({ command: 'openExtension', data: 'redhat.java' }); });
     document.getElementById('syncSelectFilesBtn').addEventListener('click', function() { vscode.postMessage({ command: 'selectJavaFiles' }); });
     document.getElementById('uploadBtn').addEventListener('click', upload);
 
@@ -1414,8 +1426,12 @@ window.addEventListener('message', function(event) {
       } else if (data.command === 'loadProjectError') {
         document.getElementById('currentProject').textContent = 'Error';
         showStatus(data.data?.message || 'Failed to load project data', 'error');
-      } else if (data.command === 'javaExtMissing') {
-        document.getElementById('javaExtWarning').style.display = 'block';
+      } else if (data.command === 'javaExtMissingJavadoc') {
+        document.getElementById('javaExtWarningJavadoc').style.display = 'block';
+        document.getElementById('javaExtWarningSchema').style.display = 'none';
+      } else if (data.command === 'javaExtMissingSchema') {
+        document.getElementById('javaExtWarningSchema').style.display = 'block';
+        document.getElementById('javaExtWarningJavadoc').style.display = 'none';
       } else if (data.command === 'uploadProgress') {
         showStatus(data.data?.message || '', 'loading');
       } else if (data.command === 'uploadSuccess') {
