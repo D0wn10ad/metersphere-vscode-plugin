@@ -7,6 +7,7 @@ import { DebugLogger } from '../debugLogger'
 import { ContextHolder } from '../contextHolder'
 import { parseUploadedFiles } from '../uploadParsing'
 import { prependContextPath, applyContextPathToPaths } from '../contextPath'
+import { resolveUploadPlatform } from '../uploadPlatform'
 
 export class SidebarView {
   private static views: Record<string, vscode.WebviewView> = {}
@@ -290,14 +291,16 @@ export class SidebarView {
         contentType: 'application/json',
       })
 
-      // Build request JSON based on server version
+      // Build request JSON based on server version; the platform is derived from the
+      // content actually being sent (never from the server version).
+      const platform = resolveUploadPlatform(isOpenApi ? 'swagger3' : 'postman')
       let requestJson: string
       if (serverVersion === 'v3') {
         requestJson = JSON.stringify({
           coverModule: isFullCoverage,
           coverData: isFullCoverage,
           type: 'API',
-          platform: 'Swagger3',
+          platform,
           syncCase: uploadData.syncCase ?? true,
           moduleId,
           model: 'definition',
@@ -308,7 +311,7 @@ export class SidebarView {
       } else {
         const bodyModeId = isFullCoverage ? 'fullCoverage' : 'incrementalMerge'
         requestJson = JSON.stringify({
-          platform: isOpenApi ? 'Swagger3' : 'Postman',
+          platform,
           moduleId,
           projectId,
           modeId: bodyModeId,
