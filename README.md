@@ -146,7 +146,7 @@ npx jest test/<file>.test.ts    # Run specific test
 node test/<file>.test.js        # Run legacy Node tests
 ```
 
-Tests use a mock VSCode stack: `src/vscode.d.ts`, `node_modules/vscode/index.js`, and `test/vscode-mock-setup.js`.
+Tests use a mock VSCode stack: `src/vscode.d.ts` and `test/vscode-mock-setup.js`.
 
 ## Project Status
 

@@ -179,6 +179,23 @@ export interface Window extends WindowExtra {
     executeCommand(command: string, ...args: unknown[]): Thenable<unknown>
   }
 
+  /** Command string for the workspace symbol provider (used via executeCommand). */
+  export const executeWorkspaceSymbolProvider: string
+
+  export enum SymbolKind {
+    Class = 4,
+    Enum = 9,
+    Interface = 10,
+    Struct = 23,
+  }
+
+  export interface SymbolInformation {
+    name: string
+    kind: SymbolKind | string
+    location: { uri: Uri | string }
+    containerName?: string
+  }
+
   export const workspace: Workspace
   export const window: Window
   export const commands: Commands

@@ -59,8 +59,7 @@ node test/httpClient.test.js        # Legacy node-only tests
 
 Tests run without the VSCode runtime using a mock stack:
 - `src/vscode.d.ts` — TypeScript type declarations for the VSCode API
-- `node_modules/vscode/index.js` — CommonJS mock with in-memory settings storage
-- `test/vscode-mock-setup.js` — Jest setup that mocks the `vscode` module globally
+- `test/vscode-mock-setup.js` — Jest setup that mocks the `vscode` module globally (per-test configurable via `globalThis.__vscodeMock`)
 
 Do not modify these mock files without a corresponding update to tests.
 
@@ -179,7 +178,7 @@ When adding features, decompose into small, self-contained tasks. Each task shou
 - Ensure `npm install` runs successfully before building.
 - Use TypeScript compile checks (`npx tsc -p tsconfig.json --noEmit`) to verify types during development.
 - Run `npm test` to confirm all Jest tests pass before committing.
-- If TypeScript errors appear related to `vscode` module, verify `src/vscode.d.ts` and `node_modules/vscode/index.js` exist.
+- If TypeScript errors appear related to `vscode` module, verify `src/vscode.d.ts` and `test/vscode-mock-setup.js` exist.
 
 ---
 
