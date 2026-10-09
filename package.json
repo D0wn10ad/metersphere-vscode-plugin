@@ -250,7 +250,8 @@
     "test": "jest",
     "build:cst-vendor": "node scripts/build-cst-vendor.mjs",
     "precompile": "npm run build:cst-vendor",
-    "pretest": "npm run build:cst-vendor"
+    "pretest": "npm run build:cst-vendor",
+    "package": "npx @vscode/vsce package"
   },
   "dependencies": {
     "asynckit": "^0.4.0",
