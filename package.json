@@ -2,7 +2,7 @@
   "name": "metersphere-vscode-extension",
   "displayName": "MeterSphere VSCode",
   "description": "VSCode extension for MeterSphere v2 APIs — sync Java Spring controllers, browse projects, manage test resources, and debug API requests from your editor",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "publisher": "metersphere",
   "icon": "media/ms_big_logo.png",
   "repository": {
@@ -85,13 +85,19 @@
         "metersphere.exportFormat": {
           "type": "string",
           "default": "swagger3",
-          "enum": ["postman", "swagger3"],
+          "enum": [
+            "postman",
+            "swagger3"
+          ],
           "description": "API definition export format for MeterSphere upload (a legacy stored 'swagger2' is treated as 'swagger3')"
         },
         "metersphere.serverVersion": {
           "type": "string",
           "default": "v3",
-          "enum": ["v2", "v3"],
+          "enum": [
+            "v2",
+            "v3"
+          ],
           "description": "MeterSphere server version the upload targets (affects coverModule/coverData mode)"
         },
         "metersphere.rejectUnauthorized": {
