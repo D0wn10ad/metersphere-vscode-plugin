@@ -2,7 +2,7 @@
   "name": "metersphere-vscode-extension",
   "displayName": "MeterSphere VSCode",
   "description": "VSCode extension for MeterSphere v2 APIs — sync Java Spring controllers, browse projects, manage test resources, and debug API requests from your editor",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "publisher": "metersphere",
   "icon": "media/ms_big_logo.png",
   "repository": {

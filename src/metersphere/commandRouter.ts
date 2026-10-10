@@ -234,17 +234,16 @@ export class CommandRouter {
       vscode.commands.registerCommand('metersphere.uploadFromFileExplorer', async (...args: unknown[]) => {
         let uris: vscode.Uri[] = []
         
-        if (args.length > 0 && args[0] instanceof vscode.Uri) {
+        if (args.length > 0) {
           const flat: vscode.Uri[] = []
-          for (const arg of args) {
-            if (arg instanceof vscode.Uri) {
-              flat.push(arg)
-            } else if (Array.isArray(arg)) {
-              for (const u of arg) {
-                if (u instanceof vscode.Uri) flat.push(u)
-              }
+          const collect = (candidate: unknown): void => {
+            if (candidate instanceof vscode.Uri) {
+              flat.push(candidate)
+            } else if (Array.isArray(candidate)) {
+              for (const item of candidate) collect(item)
             }
           }
+          for (const arg of args) collect(arg)
           uris = flat
         }
         
