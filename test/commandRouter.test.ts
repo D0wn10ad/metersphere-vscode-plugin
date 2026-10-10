@@ -1,6 +1,8 @@
 import { CommandRouter } from '../src/metersphere/commandRouter'
 import { ConnectionManager } from '../src/metersphere/connectionManager'
 import { SidebarView } from '../src/metersphere/views/sidebarView'
+import { JavaFileScanner } from '../src/metersphere/javaFileScanner'
+import { NodeType } from '../src/metersphere/models/navigatorNode'
 
 jest.mock('../src/metersphere/views/sidebarView', () => ({
   SidebarView: {
@@ -9,6 +11,15 @@ jest.mock('../src/metersphere/views/sidebarView', () => ({
     showSettings: jest.fn(),
     showSync: jest.fn(),
     loadProjectModules: jest.fn(),
+    postMessage: jest.fn(),
+  },
+}))
+
+jest.mock('../src/metersphere/javaFileScanner', () => ({
+  JavaFileScanner: {
+    findProjectRoot: jest.fn(),
+    getCommonProjectPaths: jest.fn(),
+    findJavaFilesInProject: jest.fn(),
   },
 }))
 
@@ -77,5 +88,150 @@ describe('CommandRouter', () => {
 
     expect(SidebarView.loadProjectModules).toHaveBeenCalled()
     registerSpy.mockRestore()
+  })
+})
+
+describe('CommandRouter scan handlers (single terminal scanComplete)', () => {
+  const vscode = require('vscode')
+
+  class FakeUri {
+    path: string
+    constructor(public fsPath: string) {
+      this.path = fsPath
+    }
+  }
+
+  let commands: Map<string, (...args: unknown[]) => unknown>
+  let origUri: unknown
+  let registerSpy: jest.SpyInstance
+
+  const register = (): void => {
+    commands = new Map()
+    const disposables: unknown[] = []
+    const mockContext = { subscriptions: { push: (d: unknown) => disposables.push(d) } }
+    CommandRouter.registerAll(mockContext as any, {
+      navigatorProvider: { setRoots: () => {} } as any,
+      httpRequest: () => Promise.resolve({ status: 200, body: { data: [] } }),
+      getActiveWebviewPanel: () => undefined,
+      connectionManager: { update: () => {} } as unknown as ConnectionManager,
+    } as any)
+  }
+
+  const scanCompleteCalls = (): Record<string, unknown>[] =>
+    (SidebarView.postMessage as jest.Mock).mock.calls
+      .map(c => c[0] as Record<string, unknown>)
+      .filter(m => m.command === 'scanComplete')
+
+  const flushMicrotasks = async (): Promise<void> => {
+    for (let i = 0; i < 20; i++) await Promise.resolve()
+  }
+
+  beforeEach(() => {
+    origUri = vscode.Uri
+    vscode.Uri = FakeUri
+    registerSpy = jest.spyOn(vscode.commands, 'registerCommand').mockImplementation((...args: unknown[]) => {
+      const [name, cb] = args as [string, (...commandArgs: unknown[]) => unknown]
+      commands.set(name, cb)
+      return { dispose: jest.fn() }
+    })
+    register()
+  })
+
+  afterEach(() => {
+    vscode.Uri = origUri
+    registerSpy.mockRestore()
+    jest.clearAllMocks()
+    jest.useRealTimers()
+  })
+
+  test('uploadFromFileExplorer happy: stubbed scan returns files -> exactly one scanComplete with the file list', async () => {
+    ;(JavaFileScanner.findProjectRoot as jest.Mock).mockResolvedValue('/proj')
+    ;(JavaFileScanner.getCommonProjectPaths as jest.Mock).mockReturnValue(['/src'])
+    ;(JavaFileScanner.findJavaFilesInProject as jest.Mock).mockResolvedValue(['A.java'])
+
+    await commands.get('metersphere.uploadFromFileExplorer')?.([new FakeUri('/proj/src/A.java')])
+
+    const calls = scanCompleteCalls()
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toEqual({ command: 'scanComplete', data: { files: ['A.java'] } })
+  })
+
+  test('uploadFromFileExplorer failure: scan throws -> exactly one scanComplete with files:[] + error', async () => {
+    ;(JavaFileScanner.findProjectRoot as jest.Mock).mockResolvedValue(null)
+
+    await commands.get('metersphere.uploadFromFileExplorer')?.([new FakeUri('/proj/src/A.java')])
+
+    const calls = scanCompleteCalls()
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toEqual({ command: 'scanComplete', data: { files: [], error: 'No @RestController found' } })
+  })
+
+  test('uploadFromFileExplorer folder failure: no project root -> exact terminal error', async () => {
+    ;(JavaFileScanner.findProjectRoot as jest.Mock).mockResolvedValue(null)
+
+    await commands.get('metersphere.uploadFromFileExplorer')?.([new FakeUri('/proj/docs')])
+
+    const calls = scanCompleteCalls()
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toEqual({ command: 'scanComplete', data: { files: [], error: 'Could not find project root' } })
+  })
+
+  test('uploadFromFileExplorer no uris: exactly one terminal scanComplete ("No files selected")', async () => {
+    await commands.get('metersphere.uploadFromFileExplorer')?.([])
+
+    const calls = scanCompleteCalls()
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toEqual({ command: 'scanComplete', data: { files: [], error: 'No files selected' } })
+  })
+
+  test('uploadFromNavigator happy: exactly one scanComplete with the file list', async () => {
+    ;(JavaFileScanner.findProjectRoot as jest.Mock).mockResolvedValue('/proj')
+    ;(JavaFileScanner.getCommonProjectPaths as jest.Mock).mockReturnValue(['/src'])
+    ;(JavaFileScanner.findJavaFilesInProject as jest.Mock).mockResolvedValue(['A.java'])
+
+    const node = { type: NodeType.PROJECT, uri: new FakeUri('/proj'), name: 'MyProj' }
+    await commands.get('metersphere.uploadFromNavigator')?.(node)
+
+    const calls = scanCompleteCalls()
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toEqual({ command: 'scanComplete', data: { files: ['A.java'] } })
+  })
+
+  test('uploadFromNavigator failure: no project root -> exact terminal error text preserved', async () => {
+    ;(JavaFileScanner.findProjectRoot as jest.Mock).mockResolvedValue(null)
+
+    const node = { type: NodeType.PROJECT, uri: new FakeUri('/proj'), name: 'MyProj' }
+    await commands.get('metersphere.uploadFromNavigator')?.(node)
+
+    const calls = scanCompleteCalls()
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toEqual({
+      command: 'scanComplete',
+      data: { files: [], error: 'Could not find project root (no pom.xml or build.gradle found)' },
+    })
+  })
+
+  test('syncFolder happy: quickpick file scope -> exactly one scanComplete with the single file', async () => {
+    await commands.get('metersphere.syncFolder')?.(new FakeUri('/x/A.java'))
+
+    const calls = scanCompleteCalls()
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toEqual({ command: 'scanComplete', data: { files: ['/x/A.java'] } })
+  })
+
+  test('scan entry point: a never-settling scan is terminated at the 60s hard timeout with exactly one scanComplete', async () => {
+    jest.useFakeTimers()
+    ;(JavaFileScanner.findProjectRoot as jest.Mock).mockResolvedValue('/proj')
+    ;(JavaFileScanner.getCommonProjectPaths as jest.Mock).mockReturnValue(['/src'])
+    ;(JavaFileScanner.findJavaFilesInProject as jest.Mock).mockReturnValue(new Promise<string[]>(() => {}))
+
+    const done = commands.get('metersphere.uploadFromFileExplorer')?.([new FakeUri('/proj/src/A.java')])
+    await flushMicrotasks()
+    jest.advanceTimersByTime(60_001)
+    await done
+
+    const calls = scanCompleteCalls()
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toEqual({ command: 'scanComplete', data: { files: [], error: 'scan timed out' } })
   })
 })
