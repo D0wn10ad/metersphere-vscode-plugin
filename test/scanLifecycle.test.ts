@@ -1,4 +1,5 @@
 import { runScanWithTerminalMessage, ScanLifecycleOptions } from '../src/metersphere/scanLifecycle'
+import { DebugLogger } from '../src/metersphere/debugLogger'
 
 function makeOpts(overrides: Partial<ScanLifecycleOptions>): { opts: ScanLifecycleOptions; posted: Record<string, unknown>[] } {
   const posted: Record<string, unknown>[] = []
@@ -102,5 +103,47 @@ describe('runScanWithTerminalMessage', () => {
 
     expect(files).toEqual([])
     expect(posted[0]).toEqual({ command: 'scanComplete', data: { files: [], error: 'plain string failure' } })
+  })
+
+  describe('observability', () => {
+    let logSpy: jest.SpyInstance
+    let errorSpy: jest.SpyInstance
+    beforeEach(() => {
+      logSpy = jest.spyOn(DebugLogger, 'log')
+      errorSpy = jest.spyOn(DebugLogger, 'error')
+    })
+    afterEach(() => {
+      logSpy.mockRestore()
+      errorSpy.mockRestore()
+    })
+
+    test('logs Scan started and Scan finished with the label and file count on success', async () => {
+      const { opts } = makeOpts({ scan: async () => ['A.java', 'B.java'] })
+
+      await runScanWithTerminalMessage(opts)
+
+      expect(logSpy).toHaveBeenCalledWith('Sync', 'Scan started', { label: 'test' })
+      expect(logSpy).toHaveBeenCalledWith('Sync', 'Scan finished', { label: 'test', fileCount: 2 })
+    })
+
+    test('logs Scan failed with the label and error message on rejection', async () => {
+      const { opts } = makeOpts({ scan: async () => { throw new Error('boom') } })
+
+      await runScanWithTerminalMessage(opts)
+
+      expect(logSpy).toHaveBeenCalledWith('Sync', 'Scan started', { label: 'test' })
+      expect(errorSpy).toHaveBeenCalledWith('Sync', 'Scan failed', { label: 'test', error: 'boom' })
+    })
+
+    test('logs Scan failed with "scan timed out" on the hard timeout', async () => {
+      jest.useFakeTimers()
+      const { opts } = makeOpts({ scan: () => new Promise<string[]>(() => {}) })
+
+      const pending = runScanWithTerminalMessage(opts)
+      jest.advanceTimersByTime(60_001)
+      await pending
+
+      expect(errorSpy).toHaveBeenCalledWith('Sync', 'Scan failed', { label: 'test', error: 'scan timed out' })
+    })
   })
 })

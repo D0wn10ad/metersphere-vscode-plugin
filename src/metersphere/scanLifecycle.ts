@@ -7,6 +7,8 @@
  * "Scanning..." state indefinitely.
  */
 
+import { DebugLogger } from './debugLogger'
+
 /** Default hard bound for a scan before it is declared timed out. */
 export const DEFAULT_SCAN_HARD_TIMEOUT_MS = 60_000
 
@@ -42,6 +44,8 @@ export interface ScanLifecycleOptions {
 export async function runScanWithTerminalMessage(opts: ScanLifecycleOptions): Promise<string[]> {
   const { scan, post, label, hardTimeoutMs = DEFAULT_SCAN_HARD_TIMEOUT_MS, onError } = opts
 
+  DebugLogger.log('Sync', 'Scan started', { label })
+
   let settled = false
   return new Promise<string[]>(resolve => {
     const settle = (files: string[], error?: string, originalError?: unknown): void => {
@@ -49,10 +53,12 @@ export async function runScanWithTerminalMessage(opts: ScanLifecycleOptions): Pr
       settled = true
       clearTimeout(timer)
       if (error !== undefined) {
+        DebugLogger.error('Sync', 'Scan failed', { label, error })
         post({ command: 'scanComplete', data: { files: [], error } })
         if (onError) onError(originalError ?? new Error(error))
         resolve([])
       } else {
+        DebugLogger.log('Sync', 'Scan finished', { label, fileCount: files.length })
         post({ command: 'scanComplete', data: { files } })
         resolve(files)
       }
