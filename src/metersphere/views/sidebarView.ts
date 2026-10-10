@@ -14,6 +14,12 @@ export class SidebarView {
   private static views: Record<string, vscode.WebviewView> = {}
   private static pendingMessages: Record<string, Record<string, unknown>[]> = {}
   private static isUploading = false
+  private static replayBuffer: Map<string, Record<string, unknown>> = new Map()
+  private static readonly REPLAY_COMMANDS: string[] = [
+    'scanComplete', 'projectLoaded', 'loadProjectError', 'javaFilesSelected',
+    'environmentsLoaded', 'environmentsError', 'historyLoaded', 'historyError',
+    'uploadSuccess', 'uploadError', 'javaExtMissingJavadoc', 'javaExtMissingSchema',
+  ]
 
   static registerView(id: string, view: vscode.WebviewView): void {
     SidebarView.views[id] = view
@@ -150,14 +156,30 @@ export class SidebarView {
 
   static postMessage(msg: Record<string, unknown>, viewId?: string): void {
     const targetId = viewId || 'controlPanel'
+    const command = typeof msg.command === 'string' ? msg.command : undefined
+    if (command && SidebarView.REPLAY_COMMANDS.includes(command)) {
+      SidebarView.replayBuffer.set(command, msg)
+    }
     const view = SidebarView.views[targetId]
     if (view) {
-      view.webview.postMessage(msg).catch(err => DebugLogger.error('Sync', 'postMessage failed', err))
+      view.webview
+        .postMessage(msg)
+        .then((delivered: boolean) => DebugLogger.log('Sync', 'postMessage delivered', { command, delivered, viewId: targetId }))
+        .catch(err => DebugLogger.error('Sync', 'postMessage failed', err))
     } else {
       if (!SidebarView.pendingMessages[targetId]) {
         SidebarView.pendingMessages[targetId] = []
       }
       SidebarView.pendingMessages[targetId].push(msg)
+    }
+  }
+
+  private static replayBufferedState(viewId?: string): void {
+    const target = viewId || 'controlPanel'
+    const buffered = Array.from(SidebarView.replayBuffer.values())
+    DebugLogger.log('Sync', 'Webview ready - replaying state', { count: buffered.length })
+    for (const msg of buffered) {
+      SidebarView.postMessage(msg, target)
     }
   }
 
@@ -217,6 +239,14 @@ export class SidebarView {
 
       case 'loadProjectData':
         await SidebarView.loadProjectModules()
+        break
+
+      case 'webviewReady':
+        SidebarView.replayBufferedState(viewId)
+        break
+
+      case 'webviewError':
+        DebugLogger.error('Sync', 'Webview script error', message.data)
         break
     }
   }
@@ -1050,6 +1080,10 @@ ${SidebarView.getThemeStyles()}
 
 <script>
 const vscode = acquireVsCodeApi();
+vscode.postMessage({ command: 'webviewReady' });
+window.addEventListener('error', function(e) {
+  vscode.postMessage({ command: 'webviewError', data: { message: String(e.message), filename: e.filename, lineno: e.lineno } });
+});
 let selectedFiles = [];
 let isScanning = false;
 let uploadEnabled = false;

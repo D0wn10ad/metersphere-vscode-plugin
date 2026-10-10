@@ -223,4 +223,47 @@ describe('sidebarView', () => {
       expect(httpRequest).not.toHaveBeenCalled();
     });
   });
+
+  describe('webviewReady handshake (state replay + delivery logging)', () => {
+    function makeCapturingView(sink: Record<string, unknown>[]): any {
+      return { webview: { postMessage: (m: Record<string, unknown>) => { sink.push(m); return Promise.resolve(true); } } };
+    }
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('buffers state-bearing messages and replays them to a freshly loaded webview on webviewReady', () => {
+      const gotA: Record<string, unknown>[] = [];
+      SidebarView.registerView('controlPanel', makeCapturingView(gotA));
+      SidebarView.postMessage({ command: 'scanningStarted', data: { message: 'Scanning...' } });
+      SidebarView.postMessage({ command: 'scanComplete', data: { files: ['A.java', 'B.java'] } });
+      SidebarView.postMessage({ command: 'projectLoaded', name: 'Proj', data: { modules: [{ id: 'm', name: 'M' }] } });
+
+      const gotAfterReload: Record<string, unknown>[] = [];
+      SidebarView.registerView('controlPanel', makeCapturingView(gotAfterReload));
+      SidebarView.handleMessage({ command: 'webviewReady' }, 'controlPanel');
+
+      const cmds = gotAfterReload.map(m => m.command);
+      expect(cmds).toContain('scanComplete');
+      expect(cmds).toContain('projectLoaded');
+      expect(cmds).not.toContain('scanningStarted');
+    });
+
+    it('logs the delivery result of every postMessage', async () => {
+      const logSpy = jest.spyOn(DebugLogger, 'log');
+      const got: Record<string, unknown>[] = [];
+      SidebarView.registerView('controlPanel', makeCapturingView(got));
+      SidebarView.postMessage({ command: 'scanComplete', data: { files: [] } });
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(logSpy).toHaveBeenCalledWith('Sync', 'postMessage delivered', expect.objectContaining({ command: 'scanComplete', delivered: true }));
+    });
+
+    it('control panel HTML announces webviewReady and reports window errors', () => {
+      const html = SidebarView.getControlPanelHtml();
+      expect(html).toContain("command: 'webviewReady'");
+      expect(html).toContain("window.addEventListener('error'");
+    });
+  });
 });
