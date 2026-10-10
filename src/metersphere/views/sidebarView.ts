@@ -53,6 +53,7 @@ export class SidebarView {
     const accessKey = SettingsManager.getAccessKey()
     const secretKey = SettingsManager.getSecretKey()
     if (!msUrl || !accessKey || !secretKey) {
+      DebugLogger.error('Sync', 'MeterSphere not configured', {})
       SidebarView.postMessage({ command: 'loadProjectError', data: { message: 'MeterSphere not configured. Go to Settings to set up your connection.' } })
       return
     }
@@ -63,6 +64,7 @@ export class SidebarView {
       const projectId = SettingsManager.getProjectId()
 
       if (!workspaceId) {
+        DebugLogger.error('Sync', 'No workspace selected', {})
         SidebarView.postMessage({ command: 'loadProjectError', data: { message: 'No workspace selected. Use Navigator to select a workspace.' } })
         return
       }
@@ -79,16 +81,19 @@ export class SidebarView {
         { workspaceIds: [workspaceId] }
       )
       if (projectsResp.status < 200 || projectsResp.status >= 300) {
+        DebugLogger.error('Sync', 'Failed to load projects', { status: projectsResp.status, url: `${msUrl}/api/project/list/related` })
         SidebarView.postMessage({ command: 'loadProjectError', data: { message: `Failed to load projects: HTTP ${projectsResp.status}` } })
         return
       }
       const rawJson = projectsResp.body
       if (!rawJson.success) {
+        DebugLogger.error('Sync', 'Project list success=false', { message: rawJson.message })
         SidebarView.postMessage({ command: 'loadProjectError', data: { message: rawJson.message || 'Failed to load projects from server' } })
         return
       }
       const projects = rawJson.data || []
       if (projects.length === 0) {
+        DebugLogger.error('Sync', 'No projects found in workspace', { workspaceId })
         SidebarView.postMessage({ command: 'loadProjectError', data: { message: 'No projects found in this workspace.' } })
         return
       }
@@ -106,6 +111,7 @@ export class SidebarView {
         headers
       )
       if (modulesResp.status < 200 || modulesResp.status >= 300) {
+        DebugLogger.error('Sync', 'Failed to load modules', { status: modulesResp.status, projectId: targetProject.id })
         SidebarView.postMessage({ command: 'loadProjectError', data: { message: `Failed to load modules: HTTP ${modulesResp.status}` } })
         return
       }
@@ -116,6 +122,11 @@ export class SidebarView {
         name: m.name,
       }))
 
+      DebugLogger.log('Sync', 'Modules loaded', {
+        projectId: targetProject.id,
+        projectName: targetProject.name,
+        moduleCount: fullModules.length
+      })
       SidebarView.postMessage({
         command: 'projectLoaded',
         name: targetProject.name,

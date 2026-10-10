@@ -122,6 +122,7 @@ describe('sidebarView', () => {
         data: { modules: [{ id: 'p1:m1', name: 'Module A' }] },
       });
       expect(logSpy).toHaveBeenCalledWith('Sync', 'Starting module load', expect.anything());
+      expect(logSpy).toHaveBeenCalledWith('Sync', 'Modules loaded', expect.objectContaining({ moduleCount: 1 }));
     });
 
     it('failure: timeout rejection -> posts loadProjectError, logs, and settles (never hangs)', async () => {
@@ -145,6 +146,7 @@ describe('sidebarView', () => {
         command: 'loadProjectError',
         data: { message: 'Failed to load projects: HTTP 500' },
       });
+      expect(errorSpy).toHaveBeenCalledWith('Sync', 'Failed to load projects', expect.objectContaining({ status: 500 }));
     });
 
     it('failure: success=false -> posts loadProjectError with the server message', async () => {
@@ -159,6 +161,7 @@ describe('sidebarView', () => {
         command: 'loadProjectError',
         data: { message: 'nope' },
       });
+      expect(errorSpy).toHaveBeenCalledWith('Sync', 'Project list success=false', expect.objectContaining({ message: 'nope' }));
     });
 
     it('failure: empty projects -> posts loadProjectError', async () => {
@@ -173,6 +176,7 @@ describe('sidebarView', () => {
         command: 'loadProjectError',
         data: { message: 'No projects found in this workspace.' },
       });
+      expect(errorSpy).toHaveBeenCalledWith('Sync', 'No projects found in workspace', expect.objectContaining({ workspaceId: 'ws-1' }));
     });
 
     it('empty modules -> posts projectLoaded with an empty module list', async () => {
@@ -190,6 +194,33 @@ describe('sidebarView', () => {
         name: 'Proj One',
         data: { modules: [] },
       });
+      expect(logSpy).toHaveBeenCalledWith('Sync', 'Modules loaded', expect.objectContaining({ moduleCount: 0 }));
+    });
+
+    it('failure: not configured -> logs and posts loadProjectError without any request', async () => {
+      setSetting('metersphere.msUrl', '');
+
+      await SidebarView.loadProjectModules();
+
+      expect(errorSpy).toHaveBeenCalledWith('Sync', 'MeterSphere not configured', {});
+      expect(postSpy).toHaveBeenCalledWith({
+        command: 'loadProjectError',
+        data: { message: 'MeterSphere not configured. Go to Settings to set up your connection.' },
+      });
+      expect(httpRequest).not.toHaveBeenCalled();
+    });
+
+    it('failure: no workspace selected -> logs and posts loadProjectError without any request', async () => {
+      setSetting('metersphere.workspaceId', '');
+
+      await SidebarView.loadProjectModules();
+
+      expect(errorSpy).toHaveBeenCalledWith('Sync', 'No workspace selected', {});
+      expect(postSpy).toHaveBeenCalledWith({
+        command: 'loadProjectError',
+        data: { message: 'No workspace selected. Use Navigator to select a workspace.' },
+      });
+      expect(httpRequest).not.toHaveBeenCalled();
     });
   });
 });
