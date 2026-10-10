@@ -160,6 +160,19 @@ describe('CommandRouter scan handlers (single terminal scanComplete)', () => {
     expect(calls[0]).toEqual({ command: 'scanComplete', data: { files: ['A.java'] } })
   })
 
+  test('uploadFromFileExplorer multi-select (clickedUri, selectedUris) -> scans BOTH files, no undefined entries', async () => {
+    await commands.get('metersphere.uploadFromFileExplorer')?.([
+      new FakeUri('/proj/src/A.java'),
+      [new FakeUri('/proj/src/B.java')],
+    ])
+
+    const calls = scanCompleteCalls()
+    expect(calls).toHaveLength(1)
+    const files = (calls[0].data as { files: unknown[] }).files
+    expect(files).toEqual(['/proj/src/A.java', '/proj/src/B.java'])
+    expect(files.every(f => typeof f === 'string')).toBe(true)
+  })
+
   test('uploadFromFileExplorer failure: scan throws -> exactly one scanComplete with files:[] + error', async () => {
     ;(JavaFileScanner.findProjectRoot as jest.Mock).mockResolvedValue(null)
 

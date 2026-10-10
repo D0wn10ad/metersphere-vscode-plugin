@@ -235,12 +235,17 @@ export class CommandRouter {
         let uris: vscode.Uri[] = []
         
         if (args.length > 0 && args[0] instanceof vscode.Uri) {
-          uris = args as vscode.Uri[]
-        } else if (args.length > 0 && Array.isArray(args[0])) {
-          const firstArg = args[0]
-          if (firstArg.length > 0 && firstArg[0] instanceof vscode.Uri) {
-            uris = firstArg as vscode.Uri[]
+          const flat: vscode.Uri[] = []
+          for (const arg of args) {
+            if (arg instanceof vscode.Uri) {
+              flat.push(arg)
+            } else if (Array.isArray(arg)) {
+              for (const u of arg) {
+                if (u instanceof vscode.Uri) flat.push(u)
+              }
+            }
           }
+          uris = flat
         }
         
         await SidebarView.showSync()
@@ -260,7 +265,9 @@ export class CommandRouter {
 
         await runScanWithTerminalMessage({
           scan: async () => {
-            const filePaths = uris.map(u => (u as { fsPath?: string }).fsPath || u.path)
+            const filePaths = uris
+              .map(u => (u as { fsPath?: string }).fsPath || u.path)
+              .filter((p): p is string => typeof p === 'string')
             const isFile = filePaths[0].endsWith('.java')
             let filesToUpload: string[] = []
 

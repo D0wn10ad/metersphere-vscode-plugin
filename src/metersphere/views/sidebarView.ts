@@ -1230,7 +1230,7 @@ window.addEventListener('message', function(event) {
     var fileList = document.getElementById('fileList');
     fileList.innerHTML = selectedFiles.length === 0
       ? '<div style="font-style:italic">No files selected</div>'
-      : selectedFiles.map(function(f) { return '<div class="file-list-item">' + f.split('/').pop() + '</div>'; }).join('');
+      : selectedFiles.map(function(f) { return '<div class="file-list-item">' + String(f).split('/').pop().split('\\\\').pop() + '</div>'; }).join('');
     if (selectedFiles.length > 0) uploadEnabled = true;
     setUploadEnabled(uploadEnabled);
   } else if (msg.command === 'scanningStarted') {
@@ -1260,7 +1260,7 @@ window.addEventListener('message', function(event) {
       showStatus('Found ' + selectedFiles.length + ' Java files', 'success');
       document.getElementById('fileList').innerHTML = selectedFiles.length === 0
         ? '<div style="font-style:italic">No files selected</div>'
-        : selectedFiles.map(function(f) { return '<div class="file-list-item">' + f.split('/').pop() + '</div>'; }).join('');
+        : selectedFiles.map(function(f) { return '<div class="file-list-item">' + String(f).split('/').pop().split('\\\\').pop() + '</div>'; }).join('');
       uploadEnabled = selectedFiles.length > 0;
     }
     setUploadEnabled(uploadEnabled);
