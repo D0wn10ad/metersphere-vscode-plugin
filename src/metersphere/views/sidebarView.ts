@@ -19,7 +19,7 @@ export class SidebarView {
     SidebarView.views[id] = view
     const pending = SidebarView.pendingMessages[id]
     if (pending) {
-      pending.forEach(msg => view.webview.postMessage(msg).catch(() => {}))
+      pending.forEach(msg => view.webview.postMessage(msg).catch(err => DebugLogger.error('Sync', 'postMessage failed', err)))
       delete SidebarView.pendingMessages[id]
     }
   }
@@ -148,7 +148,7 @@ export class SidebarView {
     const targetId = viewId || 'controlPanel'
     const view = SidebarView.views[targetId]
     if (view) {
-      view.webview.postMessage(msg).catch(() => {})
+      view.webview.postMessage(msg).catch(err => DebugLogger.error('Sync', 'postMessage failed', err))
     } else {
       if (!SidebarView.pendingMessages[targetId]) {
         SidebarView.pendingMessages[targetId] = []
@@ -1049,6 +1049,7 @@ const vscode = acquireVsCodeApi();
 let selectedFiles = [];
 let isScanning = false;
 let uploadEnabled = false;
+let scanWatchdog;
 
 // Wire up event listeners after DOM is ready
 (function() {
@@ -1187,13 +1188,21 @@ window.addEventListener('message', function(event) {
     if (selectedFiles.length > 0) uploadEnabled = true;
     setUploadEnabled(uploadEnabled);
   } else if (msg.command === 'scanningStarted') {
+    if (scanWatchdog !== undefined) { clearTimeout(scanWatchdog); }
     isScanning = true;
     selectedFiles = [];
     uploadEnabled = false;
     document.getElementById('fileList').innerHTML = '<div style="font-style:italic">Scanning...</div>';
     showStatus(msg.data?.message || 'Scanning...', 'loading');
     setUploadEnabled(false);
+    scanWatchdog = setTimeout(function() {
+      scanWatchdog = undefined;
+      isScanning = false;
+      showStatus('Scan timed out - please retry', 'error');
+      setUploadEnabled(uploadEnabled);
+    }, 30000);
   } else if (msg.command === 'scanComplete') {
+    if (scanWatchdog !== undefined) { clearTimeout(scanWatchdog); scanWatchdog = undefined; }
     isScanning = false;
     if (msg.data?.error) {
       showStatus('Error: ' + (msg.data?.error || 'Unknown'), 'error');
