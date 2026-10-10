@@ -18,7 +18,7 @@ export class SidebarView {
   private static readonly REPLAY_COMMANDS: string[] = [
     'scanComplete', 'projectLoaded', 'loadProjectError', 'javaFilesSelected',
     'environmentsLoaded', 'environmentsError', 'historyLoaded', 'historyError',
-    'uploadSuccess', 'uploadError', 'javaExtMissingJavadoc', 'javaExtMissingSchema',
+    'javaExtMissingJavadoc', 'javaExtMissingSchema',
   ]
 
   static registerView(id: string, view: vscode.WebviewView): void {

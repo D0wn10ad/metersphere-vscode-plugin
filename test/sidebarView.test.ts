@@ -250,6 +250,23 @@ describe('sidebarView', () => {
       expect(cmds).not.toContain('scanningStarted');
     });
 
+    it('never replays transient upload events (uploadSuccess/uploadError) after a reload', () => {
+      const gotA: Record<string, unknown>[] = [];
+      SidebarView.registerView('controlPanel', makeCapturingView(gotA));
+      SidebarView.postMessage({ command: 'scanComplete', data: { files: ['A.java'] } });
+      SidebarView.postMessage({ command: 'uploadSuccess', data: { count: 11 } });
+      SidebarView.postMessage({ command: 'uploadError', data: { message: 'x' } });
+
+      const gotAfterReload: Record<string, unknown>[] = [];
+      SidebarView.registerView('controlPanel', makeCapturingView(gotAfterReload));
+      SidebarView.handleMessage({ command: 'webviewReady' }, 'controlPanel');
+
+      const cmds = gotAfterReload.map(m => m.command);
+      expect(cmds).toContain('scanComplete');
+      expect(cmds).not.toContain('uploadSuccess');
+      expect(cmds).not.toContain('uploadError');
+    });
+
     it('logs the delivery result of every postMessage', async () => {
       const logSpy = jest.spyOn(DebugLogger, 'log');
       const got: Record<string, unknown>[] = [];
