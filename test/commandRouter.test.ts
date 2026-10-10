@@ -3,6 +3,8 @@ import { ConnectionManager } from '../src/metersphere/connectionManager'
 import { SidebarView } from '../src/metersphere/views/sidebarView'
 import { JavaFileScanner } from '../src/metersphere/javaFileScanner'
 import { NodeType } from '../src/metersphere/models/navigatorNode'
+import { NavigatorTreeDataProvider } from '../src/metersphere/navigatorTreeProvider'
+import type * as vscodeTypes from 'vscode'
 
 jest.mock('../src/metersphere/views/sidebarView', () => ({
   SidebarView: {
@@ -108,13 +110,15 @@ describe('CommandRouter scan handlers (single terminal scanComplete)', () => {
   const register = (): void => {
     commands = new Map()
     const disposables: unknown[] = []
-    const mockContext = { subscriptions: { push: (d: unknown) => disposables.push(d) } }
-    CommandRouter.registerAll(mockContext as any, {
-      navigatorProvider: { setRoots: () => {} } as any,
+    const mockContext = {
+      subscriptions: { push: (d: unknown) => disposables.push(d) },
+    } as unknown as vscodeTypes.ExtensionContext
+    CommandRouter.registerAll(mockContext, {
+      navigatorProvider: { setRoots: () => {} } as unknown as NavigatorTreeDataProvider,
       httpRequest: () => Promise.resolve({ status: 200, body: { data: [] } }),
       getActiveWebviewPanel: () => undefined,
       connectionManager: { update: () => {} } as unknown as ConnectionManager,
-    } as any)
+    })
   }
 
   const scanCompleteCalls = (): Record<string, unknown>[] =>
