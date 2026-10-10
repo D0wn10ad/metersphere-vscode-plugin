@@ -1,20 +1,20 @@
 /**
- * Tests for the SidebarView degraded-mode notices (the FIRST test for this module).
+ * Tests for the SidebarView degraded-mode notices and the loadProjectModules
+ * transport.
  *
- * Asserts on the exported HTML builders (getControlPanelHtml / getSyncHtml — both
- * public static) rather than a live webview, under the existing vscode-mock-setup.js
- * mock. The single `javaExtMissing` message is replaced by two distinct notices:
- * javaExtMissingJavadoc (parsing still works) and javaExtMissingSchema (schemas will
- * be stubs) — never shown at once.
+ * loadProjectModules is routed through httpRequest (httpClient) so the WHOLE
+ * request — including the response body read — is bounded by Promise.race
+ * (10s). The mock replaces httpRequest only; the rest of the module stays
+ * actual. No real network is ever performed.
  */
 
 import { SidebarView } from '../src/metersphere/views/sidebarView';
 import { DebugLogger } from '../src/metersphere/debugLogger';
-import { fetchWithTimeout, FetchTimeoutError } from '../src/metersphere/timeoutFetch';
+import { httpRequest } from '../src/metersphere/httpClient';
 
-jest.mock('../src/metersphere/timeoutFetch', () => {
-  const actual = jest.requireActual('../src/metersphere/timeoutFetch');
-  return { ...actual, fetchWithTimeout: jest.fn() };
+jest.mock('../src/metersphere/httpClient', () => {
+  const actual = jest.requireActual('../src/metersphere/httpClient');
+  return { ...actual, httpRequest: jest.fn() };
 });
 
 const vscode = require('vscode');
@@ -66,7 +66,7 @@ describe('sidebarView', () => {
     });
   });
 
-  describe('loadProjectModules (bounded fetches)', () => {
+  describe('loadProjectModules (httpRequest transport, bounded incl. body)', () => {
     let postSpy: jest.SpyInstance;
     let logSpy: jest.SpyInstance;
     let errorSpy: jest.SpyInstance;
@@ -89,31 +89,32 @@ describe('sidebarView', () => {
       jest.clearAllMocks();
     });
 
-    it('happy: bounded fetches resolve -> posts projectLoaded with modules and logs success', async () => {
-      (fetchWithTimeout as jest.Mock)
+    it('happy: bounded httpRequest resolves -> posts projectLoaded with modules', async () => {
+      (httpRequest as jest.Mock)
         .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ success: true, data: [{ id: 'p1', name: 'Proj One' }] }),
+          status: 200,
+          body: { success: true, data: [{ id: 'p1', name: 'Proj One' }] },
         })
         .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ data: [{ id: 'm1', name: 'Module A' }] }),
+          status: 200,
+          body: { data: [{ id: 'm1', name: 'Module A' }] },
         });
 
       await SidebarView.loadProjectModules();
 
-      expect(fetchWithTimeout).toHaveBeenCalledTimes(2);
-      expect(fetchWithTimeout).toHaveBeenNthCalledWith(
+      expect(httpRequest).toHaveBeenCalledTimes(2);
+      expect(httpRequest).toHaveBeenNthCalledWith(
         1,
+        'POST',
         'http://localhost:8081/api/project/list/related',
-        expect.objectContaining({ method: 'POST' }),
-        12_000
+        expect.any(Object),
+        { workspaceIds: ['ws-1'] }
       );
-      expect(fetchWithTimeout).toHaveBeenNthCalledWith(
+      expect(httpRequest).toHaveBeenNthCalledWith(
         2,
+        'GET',
         'http://localhost:8081/api/api/module/list/p1/HTTP',
-        expect.objectContaining({}),
-        12_000
+        expect.any(Object)
       );
       expect(postSpy).toHaveBeenCalledWith({
         command: 'projectLoaded',
@@ -123,17 +124,71 @@ describe('sidebarView', () => {
       expect(logSpy).toHaveBeenCalledWith('Sync', 'Starting module load', expect.anything());
     });
 
-    it('failure: FetchTimeoutError -> posts loadProjectError, logs the timeout, and the promise settles (never hangs)', async () => {
-      (fetchWithTimeout as jest.Mock).mockRejectedValueOnce(
-        new FetchTimeoutError('http://localhost:8081/api/project/list/related', 12_000)
-      );
+    it('failure: timeout rejection -> posts loadProjectError, logs, and settles (never hangs)', async () => {
+      (httpRequest as jest.Mock).mockRejectedValueOnce(new Error('Request timed out after 10s'));
 
       await expect(SidebarView.loadProjectModules()).resolves.toBeUndefined();
 
-      expect(errorSpy).toHaveBeenCalledWith('Sync', 'Module load timed out', expect.any(FetchTimeoutError));
+      expect(errorSpy).toHaveBeenCalledWith('Sync', 'Failed to load modules', expect.any(Error));
       expect(postSpy).toHaveBeenCalledWith({
         command: 'loadProjectError',
-        data: { message: 'Fetch timed out after 12000ms: http://localhost:8081/api/project/list/related' },
+        data: { message: 'Request timed out after 10s' },
+      });
+    });
+
+    it('failure: HTTP 500 on projects -> posts loadProjectError', async () => {
+      (httpRequest as jest.Mock).mockResolvedValueOnce({ status: 500, body: {} });
+
+      await SidebarView.loadProjectModules();
+
+      expect(postSpy).toHaveBeenCalledWith({
+        command: 'loadProjectError',
+        data: { message: 'Failed to load projects: HTTP 500' },
+      });
+    });
+
+    it('failure: success=false -> posts loadProjectError with the server message', async () => {
+      (httpRequest as jest.Mock).mockResolvedValueOnce({
+        status: 200,
+        body: { success: false, message: 'nope' },
+      });
+
+      await SidebarView.loadProjectModules();
+
+      expect(postSpy).toHaveBeenCalledWith({
+        command: 'loadProjectError',
+        data: { message: 'nope' },
+      });
+    });
+
+    it('failure: empty projects -> posts loadProjectError', async () => {
+      (httpRequest as jest.Mock).mockResolvedValueOnce({
+        status: 200,
+        body: { success: true, data: [] },
+      });
+
+      await SidebarView.loadProjectModules();
+
+      expect(postSpy).toHaveBeenCalledWith({
+        command: 'loadProjectError',
+        data: { message: 'No projects found in this workspace.' },
+      });
+    });
+
+    it('empty modules -> posts projectLoaded with an empty module list', async () => {
+      (httpRequest as jest.Mock)
+        .mockResolvedValueOnce({
+          status: 200,
+          body: { success: true, data: [{ id: 'p1', name: 'Proj One' }] },
+        })
+        .mockResolvedValueOnce({ status: 200, body: { data: [] } });
+
+      await SidebarView.loadProjectModules();
+
+      expect(postSpy).toHaveBeenCalledWith({
+        command: 'projectLoaded',
+        name: 'Proj One',
+        data: { modules: [] },
       });
     });
   });

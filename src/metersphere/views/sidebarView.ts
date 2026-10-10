@@ -8,7 +8,7 @@ import { ContextHolder } from '../contextHolder'
 import { parseUploadedFiles } from '../uploadParsing'
 import { prependContextPath, applyContextPathToPaths } from '../contextPath'
 import { resolveUploadPlatform } from '../uploadPlatform'
-import { fetchWithTimeout, FetchTimeoutError } from '../timeoutFetch'
+import { httpRequest } from '../httpClient'
 
 export class SidebarView {
   private static views: Record<string, vscode.WebviewView> = {}
@@ -72,20 +72,17 @@ export class SidebarView {
         projectId: projectId ?? 'none'
       })
 
-      const projectsResp = await fetchWithTimeout(
+      const projectsResp = await httpRequest(
+        'POST',
         `${msUrl}/api/project/list/related`,
-        {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ workspaceIds: [workspaceId] })
-        },
-        12_000
+        headers,
+        { workspaceIds: [workspaceId] }
       )
-      if (!projectsResp.ok) {
+      if (projectsResp.status < 200 || projectsResp.status >= 300) {
         SidebarView.postMessage({ command: 'loadProjectError', data: { message: `Failed to load projects: HTTP ${projectsResp.status}` } })
         return
       }
-      const rawJson = await projectsResp.json()
+      const rawJson = projectsResp.body
       if (!rawJson.success) {
         SidebarView.postMessage({ command: 'loadProjectError', data: { message: rawJson.message || 'Failed to load projects from server' } })
         return
@@ -103,16 +100,16 @@ export class SidebarView {
         if (found) targetProject = found
       }
 
-      const modulesResp = await fetchWithTimeout(
+      const modulesResp = await httpRequest(
+        'GET',
         `${msUrl}/api/api/module/list/${targetProject.id}/HTTP`,
-        { headers },
-        12_000
+        headers
       )
-      if (!modulesResp.ok) {
+      if (modulesResp.status < 200 || modulesResp.status >= 300) {
         SidebarView.postMessage({ command: 'loadProjectError', data: { message: `Failed to load modules: HTTP ${modulesResp.status}` } })
         return
       }
-      const modulesData = await modulesResp.json()
+      const modulesData = modulesResp.body
       const modules = modulesData.data || []
       const fullModules = modules.map((m: any) => ({
         id: `${targetProject.id}:${m.id}`,
@@ -125,11 +122,7 @@ export class SidebarView {
         data: { modules: fullModules }
       })
     } catch (error) {
-      if (error instanceof FetchTimeoutError) {
-        DebugLogger.error('Sync', 'Module load timed out', error)
-      } else {
-        DebugLogger.error('Sync', 'Failed to load modules', error)
-      }
+      DebugLogger.error('Sync', 'Failed to load modules', error)
       SidebarView.postMessage({ command: 'loadProjectError', data: { message: error instanceof Error ? error.message : String(error) } })
     }
   }
