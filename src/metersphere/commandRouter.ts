@@ -301,6 +301,12 @@ export class CommandRouter {
           },
           post: SidebarView.postMessage,
           label: 'fileExplorer',
+        }).then((scanned: string[]) => {
+          DebugLogger.log('Sync', 'Scan result shape', {
+            count: scanned.length,
+            types: scanned.map((f: unknown) => typeof f).join(','),
+            first: String(scanned[0]).slice(0, 100),
+          })
         })
       })
     )

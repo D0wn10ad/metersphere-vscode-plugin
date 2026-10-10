@@ -264,6 +264,13 @@ describe('sidebarView', () => {
       const html = SidebarView.getControlPanelHtml();
       expect(html).toContain("command: 'webviewReady'");
       expect(html).toContain("window.addEventListener('error'");
+      expect(html).toContain('unhandledrejection');
+    });
+
+    it('webviewError is logged as a flat JSON string, never [object Object]', () => {
+      const errorSpy = jest.spyOn(DebugLogger, 'error');
+      SidebarView.handleMessage({ command: 'webviewError', data: { message: 'boom', lineno: 42 } }, 'controlPanel');
+      expect(errorSpy).toHaveBeenCalledWith('Sync', expect.stringContaining('"message":"boom"'));
     });
   });
 });

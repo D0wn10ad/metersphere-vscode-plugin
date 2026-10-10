@@ -246,7 +246,7 @@ export class SidebarView {
         break
 
       case 'webviewError':
-        DebugLogger.error('Sync', 'Webview script error', message.data)
+        DebugLogger.error('Sync', 'Webview script error: ' + JSON.stringify(message.data))
         break
     }
   }
@@ -1081,8 +1081,16 @@ ${SidebarView.getThemeStyles()}
 <script>
 const vscode = acquireVsCodeApi();
 vscode.postMessage({ command: 'webviewReady' });
+function reportWebviewError(payload) {
+  vscode.postMessage({ command: 'webviewError', data: payload });
+}
 window.addEventListener('error', function(e) {
-  vscode.postMessage({ command: 'webviewError', data: { message: String(e.message), filename: e.filename, lineno: e.lineno } });
+  var err = e.error || {};
+  reportWebviewError({ message: String((err && err.message) || e.message), stack: String((err && err.stack) || ''), filename: String(e.filename || ''), lineno: e.lineno || 0 });
+});
+window.addEventListener('unhandledrejection', function(e) {
+  var r = e.reason || {};
+  reportWebviewError({ message: 'unhandledrejection: ' + String((r && r.message) || r), stack: String((r && r.stack) || '') });
 });
 let selectedFiles = [];
 let isScanning = false;
