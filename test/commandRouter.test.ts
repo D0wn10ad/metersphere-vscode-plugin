@@ -173,6 +173,22 @@ describe('CommandRouter scan handlers (single terminal scanComplete)', () => {
     expect(files.every(f => typeof f === 'string')).toBe(true)
   })
 
+  test('uploadFromFileExplorer single-select (uri, [sameUri]) -> deduplicates to ONE file entry', async () => {
+    ;(JavaFileScanner.findProjectRoot as jest.Mock).mockResolvedValue('/proj')
+    ;(JavaFileScanner.getCommonProjectPaths as jest.Mock).mockReturnValue(['/src'])
+    ;(JavaFileScanner.findJavaFilesInProject as jest.Mock).mockResolvedValue(['A.java'])
+
+    await commands.get('metersphere.uploadFromFileExplorer')?.([
+      new FakeUri('/proj/src/A.java'),
+      [new FakeUri('/proj/src/A.java')],
+    ])
+
+    const calls = scanCompleteCalls()
+    expect(calls).toHaveLength(1)
+    const files = (calls[0].data as { files: unknown[] }).files
+    expect(files).toEqual(['A.java'])
+  })
+
   test('uploadFromFileExplorer failure: scan throws -> exactly one scanComplete with files:[] + error', async () => {
     ;(JavaFileScanner.findProjectRoot as jest.Mock).mockResolvedValue(null)
 

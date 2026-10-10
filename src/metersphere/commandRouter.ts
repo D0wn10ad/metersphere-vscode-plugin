@@ -264,9 +264,11 @@ export class CommandRouter {
 
         await runScanWithTerminalMessage({
           scan: async () => {
-            const filePaths = uris
-              .map(u => (u as { fsPath?: string }).fsPath || u.path)
-              .filter((p): p is string => typeof p === 'string')
+            const filePaths = [...new Set(
+              uris
+                .map(u => (u as { fsPath?: string }).fsPath || u.path)
+                .filter((p): p is string => typeof p === 'string')
+            )]
             const isFile = filePaths[0].endsWith('.java')
             let filesToUpload: string[] = []
 
