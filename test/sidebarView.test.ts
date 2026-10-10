@@ -9,6 +9,19 @@
  */
 
 import { SidebarView } from '../src/metersphere/views/sidebarView';
+import { DebugLogger } from '../src/metersphere/debugLogger';
+import { fetchWithTimeout, FetchTimeoutError } from '../src/metersphere/timeoutFetch';
+
+jest.mock('../src/metersphere/timeoutFetch', () => {
+  const actual = jest.requireActual('../src/metersphere/timeoutFetch');
+  return { ...actual, fetchWithTimeout: jest.fn() };
+});
+
+const vscode = require('vscode');
+
+function setSetting(key: string, value: string): void {
+  vscode.workspace.getConfiguration().update(key, value);
+}
 
 describe('sidebarView', () => {
   describe('degraded-mode notices', () => {
@@ -50,6 +63,78 @@ describe('sidebarView', () => {
       const syncHtml = SidebarView.getSyncHtml();
       expect(syncHtml).toContain('id="syncJavaExtLink"');
       expect(syncHtml).toContain('id="syncSchemaExtLink"');
+    });
+  });
+
+  describe('loadProjectModules (bounded fetches)', () => {
+    let postSpy: jest.SpyInstance;
+    let logSpy: jest.SpyInstance;
+    let errorSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      postSpy = jest.spyOn(SidebarView, 'postMessage').mockImplementation(() => {});
+      logSpy = jest.spyOn(DebugLogger, 'log');
+      errorSpy = jest.spyOn(DebugLogger, 'error');
+      setSetting('metersphere.msUrl', 'http://localhost:8081');
+      setSetting('metersphere.accessKey', 'ak-test-12345678');
+      setSetting('metersphere.secretKey', 'sk-test-12345678');
+      setSetting('metersphere.workspaceId', 'ws-1');
+      setSetting('metersphere.projectId', '');
+    });
+
+    afterEach(() => {
+      postSpy.mockRestore();
+      logSpy.mockRestore();
+      errorSpy.mockRestore();
+      jest.clearAllMocks();
+    });
+
+    it('happy: bounded fetches resolve -> posts projectLoaded with modules and logs success', async () => {
+      (fetchWithTimeout as jest.Mock)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ success: true, data: [{ id: 'p1', name: 'Proj One' }] }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: [{ id: 'm1', name: 'Module A' }] }),
+        });
+
+      await SidebarView.loadProjectModules();
+
+      expect(fetchWithTimeout).toHaveBeenCalledTimes(2);
+      expect(fetchWithTimeout).toHaveBeenNthCalledWith(
+        1,
+        'http://localhost:8081/api/project/list/related',
+        expect.objectContaining({ method: 'POST' }),
+        12_000
+      );
+      expect(fetchWithTimeout).toHaveBeenNthCalledWith(
+        2,
+        'http://localhost:8081/api/api/module/list/p1/HTTP',
+        expect.objectContaining({}),
+        12_000
+      );
+      expect(postSpy).toHaveBeenCalledWith({
+        command: 'projectLoaded',
+        name: 'Proj One',
+        data: { modules: [{ id: 'p1:m1', name: 'Module A' }] },
+      });
+      expect(logSpy).toHaveBeenCalledWith('Sync', 'Starting module load', expect.anything());
+    });
+
+    it('failure: FetchTimeoutError -> posts loadProjectError, logs the timeout, and the promise settles (never hangs)', async () => {
+      (fetchWithTimeout as jest.Mock).mockRejectedValueOnce(
+        new FetchTimeoutError('http://localhost:8081/api/project/list/related', 12_000)
+      );
+
+      await expect(SidebarView.loadProjectModules()).resolves.toBeUndefined();
+
+      expect(errorSpy).toHaveBeenCalledWith('Sync', 'Module load timed out', expect.any(FetchTimeoutError));
+      expect(postSpy).toHaveBeenCalledWith({
+        command: 'loadProjectError',
+        data: { message: 'Fetch timed out after 12000ms: http://localhost:8081/api/project/list/related' },
+      });
     });
   });
 });

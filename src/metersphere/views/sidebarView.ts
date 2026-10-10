@@ -8,6 +8,7 @@ import { ContextHolder } from '../contextHolder'
 import { parseUploadedFiles } from '../uploadParsing'
 import { prependContextPath, applyContextPathToPaths } from '../contextPath'
 import { resolveUploadPlatform } from '../uploadPlatform'
+import { fetchWithTimeout, FetchTimeoutError } from '../timeoutFetch'
 
 export class SidebarView {
   private static views: Record<string, vscode.WebviewView> = {}
@@ -71,11 +72,15 @@ export class SidebarView {
         projectId: projectId ?? 'none'
       })
 
-      const projectsResp = await fetch(`${msUrl}/api/project/list/related`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ workspaceIds: [workspaceId] })
-      })
+      const projectsResp = await fetchWithTimeout(
+        `${msUrl}/api/project/list/related`,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ workspaceIds: [workspaceId] })
+        },
+        12_000
+      )
       if (!projectsResp.ok) {
         SidebarView.postMessage({ command: 'loadProjectError', data: { message: `Failed to load projects: HTTP ${projectsResp.status}` } })
         return
@@ -98,7 +103,11 @@ export class SidebarView {
         if (found) targetProject = found
       }
 
-      const modulesResp = await fetch(`${msUrl}/api/api/module/list/${targetProject.id}/HTTP`, { headers })
+      const modulesResp = await fetchWithTimeout(
+        `${msUrl}/api/api/module/list/${targetProject.id}/HTTP`,
+        { headers },
+        12_000
+      )
       if (!modulesResp.ok) {
         SidebarView.postMessage({ command: 'loadProjectError', data: { message: `Failed to load modules: HTTP ${modulesResp.status}` } })
         return
@@ -116,7 +125,11 @@ export class SidebarView {
         data: { modules: fullModules }
       })
     } catch (error) {
-      DebugLogger.error('Sync', 'Failed to load modules', error)
+      if (error instanceof FetchTimeoutError) {
+        DebugLogger.error('Sync', 'Module load timed out', error)
+      } else {
+        DebugLogger.error('Sync', 'Failed to load modules', error)
+      }
       SidebarView.postMessage({ command: 'loadProjectError', data: { message: error instanceof Error ? error.message : String(error) } })
     }
   }
