@@ -341,3 +341,27 @@ The gap analysis compares the VSCode plugin against:
 - IDEA plugin v3.x `MsBaseTransferV2` (V2 server compatibility mode, OpenAPI-based)
 
 When implementing a gap fix, first consult the IDEA source analysis in the gap doc for exact parameter names, endpoint paths, and serialization format.
+
+---
+
+## 15) MeterSphere v2.x Server API Findings (verified live)
+
+These findings come from live debugging against a running `v2.10.26-lts` instance (Docker: `gateway` on :8081 → microservices), plus the same gateway pattern observed in another v2 project. Re-verify against the server source for YOUR target version before changing anything that depends on them. Server source for the exact image version: branch/tag `v2.10.26-lts`, module `api-test/backend/src/main/java/io/metersphere/...` (note: a local checkout whose branch is *named* `v2.10.26-lts` may actually contain v3-lineage code — verify the package layout, e.g. `io.metersphere.service.definition` vs `io.metersphere.api.service.definition`, before trusting its line numbers).
+
+### 15.1 Upload platform: OpenAPI content MUST be labelled `Swagger2`, never `Swagger3`
+
+- `ApiDefinitionImportParserFactory.getApiImportParser(platform)` (api-test service) registers ONLY: `Metersphere`, `Postman`, `Swagger2`, `Har`, `Jmeter`. **There is no `Swagger3` parser in v2.x.**
+- Sending `platform: "Swagger3"` → the factory returns `null` → `Objects.requireNonNull(runService)` NPEs inside `ApiDefinitionService.apiTestImport` → HTTP 500 with an **empty message** (`{"success":false,"message":"","data":null}`) — the response body carries no hint of the real cause.
+- The server's `Swagger2Parser.parse` auto-detects OpenAPI 3.0 documents (checks the `openapi` key) and delegates to an internal `Swagger3Parser`. So `platform: "Swagger2"` is the correct label for OpenAPI 3.0.3 exports on v2.x servers.
+- Extension mapping: `src/metersphere/uploadPlatform.ts` (`resolveUploadPlatform`), guarded by `test/uploadPlatform.test.ts`, which asserts no platform outside the server's registered set is ever emitted.
+- Debugging recipe: a 500 with `success:false, message:""` on `/api/api/definition/import` means read the api-test container's error log (`docker exec api-test tail -100 /opt/metersphere/logs/api-test/error.log`) — the response body will not tell you anything.
+
+### 15.2 One `/api` gateway, two backends: single- vs double-prefix routing (v2 only)
+
+Behind the v2 gateway, single- and double-`/api` prefixes hit **different backend services**. Verified live on v2.10.26-lts; v3 has no such gateway structure.
+
+- **Never** rewrite API-definition endpoints to the single prefix: `/api/definition/...` → 404. The double prefix `/api/api/definition/...` is the valid form. (In the request helper, passing an empty string as the 4th parameter still falls back to the `api` prefix.)
+- Single prefix `/api/project/list/related` → hits the **project-management** service (`BaseProjectController`) → returns only projects where the current user is a **member** — possibly an empty list.
+- Double prefix `/api/api/project/list/{goPage}/{pageSize}` → hits the **api-test** service (`ExtProjectController`; class-level `@RequestMapping()` with an empty prefix, method-level full literal path) → returns **all** projects in the workspace.
+- Therefore: an empty list from the single prefix does **not** mean "no projects exist". When investigating projects, always query the double-prefix paginated list first; never assert "zero projects" from a single-prefix empty result.
+- Relevance to this extension: the Navigator's project discovery currently uses the single prefix (`/api/project/list/related`), so it can under-report projects for non-member users. Switching project enumeration to the double-prefix paginated list is a candidate fix (see §14 P2 "userId in project list").
