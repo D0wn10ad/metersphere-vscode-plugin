@@ -111,13 +111,21 @@ export class OpenApiBuilder {
    * Placing the entry before expanding breaks reference cycles (A→B→A).
    */
   private static fieldSchema(raw: string, schemas: Record<string, any>): any {
+    const generic = TypeResolver.parseGeneric(raw)
+    if (generic && generic.head === 'Map') {
+      const valueType = generic.args[1]
+      return {
+        type: 'object',
+        additionalProperties: valueType ? OpenApiBuilder.fieldSchema(valueType, schemas) : { type: 'object' },
+      }
+    }
     if (TypeResolver.isCollection(raw)) {
       const item = TypeResolver.extractTypeName(raw) ?? 'string'
       return { type: 'array', items: OpenApiBuilder.fieldSchema(item, schemas) }
     }
     const resolved = TypeResolver.extractTypeName(raw) ?? raw
-    const primitive = TypeResolver.resolveTypeSchema(resolved)
-    if (typeof primitive !== 'string') {
+    const primitive = TypeResolver.primitiveSchemaWithFormat(raw)
+    if (primitive) {
       return primitive
     }
     const dto = sharedSymbolIndex.resolveSync(resolved)
@@ -142,15 +150,11 @@ export class OpenApiBuilder {
   /** Primitive schema from the Java type — never a blanket string for known primitives. */
   private static primitiveSchema(rawType: string | undefined): any {
     const type = rawType?.trim() || ''
-    const resolved = TypeResolver.extractTypeName(type)
-    if (resolved === null) {
-      return { type: 'string' }
+    const schema = TypeResolver.primitiveSchemaWithFormat(type)
+    if (schema) {
+      return schema
     }
-    const schema = TypeResolver.resolveTypeSchema(resolved)
-    if (typeof schema === 'string') {
-      // Unmapped Java type (e.g. a custom class used as a query param).
-      return { type: 'string' }
-    }
-    return schema
+    // Unmapped Java type (e.g. a custom class used as a query param).
+    return { type: 'string' }
   }
 }

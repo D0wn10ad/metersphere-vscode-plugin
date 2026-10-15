@@ -179,4 +179,109 @@ describe('OpenApiBuilder', () => {
       expect(JSON.stringify(doc)).not.toContain('Red Hat')
     })
   })
+
+  describe('Map + emission formats (T5)', () => {
+    const userSrc = [
+      'package com.example.dto;',
+      'public class User {',
+      '  private String name;',
+      '}',
+    ].join('\n')
+
+    const eventSrc = [
+      'package com.example.dto;',
+      'public class Event {',
+      '  private LocalDateTime createdAt;',
+      '  private UUID id;',
+      '}',
+    ].join('\n')
+
+    const bodyOf = (type: string): ParseResult => ({
+      classes: [],
+      apis: [
+        { method: 'POST', path: '/m', fullPath: '/m', parameters: [{ name: 'body', in: 'body', type }] },
+      ],
+    })
+
+    const schemaOf = (doc: ReturnType<typeof OpenApiBuilder.build>) =>
+      doc.paths['/m'].post.requestBody.content['application/json'].schema
+
+    beforeEach(() => {
+      resetUploadSymbolIndex()
+      getUploadSymbolIndex().register(userSrc, 'file:///user.java')
+      getUploadSymbolIndex().register(eventSrc, 'file:///event.java')
+    })
+
+    afterEach(() => {
+      resetUploadSymbolIndex()
+    })
+
+    test('Map<String,List<User>> emits additionalProperties as an array of the User $ref', () => {
+      const doc = OpenApiBuilder.build(bodyOf('Map<String,List<User>>'), 'Test')
+      expect(schemaOf(doc)).toEqual({
+        type: 'object',
+        additionalProperties: { type: 'array', items: { $ref: '#/components/schemas/User' } },
+      })
+      expect(doc.components?.schemas?.User).toBeDefined()
+    })
+
+    test('Map<String,String> emits additionalProperties as a string schema', () => {
+      const doc = OpenApiBuilder.build(bodyOf('Map<String,String>'), 'Test')
+      expect(schemaOf(doc)).toEqual({ type: 'object', additionalProperties: { type: 'string' } })
+    })
+
+    test('Map<String,Object> emits a plain object additionalProperties', () => {
+      const doc = OpenApiBuilder.build(bodyOf('Map<String,Object>'), 'Test')
+      expect(schemaOf(doc)).toEqual({ type: 'object', additionalProperties: { type: 'object' } })
+    })
+
+    test('LocalDateTime and UUID fields carry date-time / uuid formats', () => {
+      const doc = OpenApiBuilder.build(bodyOf('Event'), 'Test')
+      const props = doc.components?.schemas?.Event.properties
+      expect(props.createdAt).toEqual({ type: 'string', format: 'date-time' })
+      expect(props.id).toEqual({ type: 'string', format: 'uuid' })
+    })
+
+    test('LocalDateTime query param carries date-time format', () => {
+      const api: ParseResult = {
+        classes: [],
+        apis: [
+          { method: 'GET', path: '/q', fullPath: '/q', parameters: [{ name: 'since', in: 'query', type: 'LocalDateTime' }] },
+        ],
+      }
+      const doc = OpenApiBuilder.build(api, 'Test')
+      expect(doc.paths['/q'].get.parameters[0].schema).toEqual({ type: 'string', format: 'date-time' })
+    })
+
+    test('int and double params carry NO format', () => {
+      const api: ParseResult = {
+        classes: [],
+        apis: [
+          {
+            method: 'GET',
+            path: '/n',
+            fullPath: '/n',
+            parameters: [
+              { name: 'count', in: 'query', type: 'int' },
+              { name: 'rate', in: 'query', type: 'double' },
+            ],
+          },
+        ],
+      }
+      const doc = OpenApiBuilder.build(api, 'Test')
+      const params = doc.paths['/n'].get.parameters
+      expect(params[0].schema).toEqual({ type: 'integer' })
+      expect(params[1].schema).toEqual({ type: 'number' })
+      expect(params[0].schema.format).toBeUndefined()
+      expect(params[1].schema.format).toBeUndefined()
+    })
+
+    test('unbalanced generic falls back to a plain object without throwing', () => {
+      let doc: ReturnType<typeof OpenApiBuilder.build> | undefined
+      expect(() => {
+        doc = OpenApiBuilder.build(bodyOf('Map<String,List<User>'), 'Test')
+      }).not.toThrow()
+      expect(schemaOf(doc!)).toEqual({ type: 'object' })
+    })
+  })
 })

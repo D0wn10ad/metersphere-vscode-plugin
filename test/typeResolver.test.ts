@@ -53,4 +53,47 @@ describe('TypeResolver', () => {
   test('resolveTypeSchema returns type name for complex types', () => {
     expect(TypeResolver.resolveTypeSchema('IDDShoppingModel')).toBe('IDDShoppingModel')
   })
+
+  describe('balanced generics + emission formats (T5)', () => {
+    test('parseGeneric splits head and balanced args', () => {
+      expect(TypeResolver.parseGeneric('Map<String,List<User>>')).toEqual({
+        head: 'Map',
+        args: ['String', 'List<User>'],
+      })
+      expect(TypeResolver.parseGeneric('List<Map<String,String>>')).toEqual({
+        head: 'List',
+        args: ['Map<String,String>'],
+      })
+    })
+
+    test('parseGeneric returns null for non-generic and unbalanced input', () => {
+      expect(TypeResolver.parseGeneric('String')).toBeNull()
+      expect(TypeResolver.parseGeneric('Map<String,List<User>')).toBeNull()
+    })
+
+    test('extractTypeName handles nested generics without naive comma split', () => {
+      expect(TypeResolver.extractTypeName('Map<String,List<User>>')).toBe('Map')
+      expect(TypeResolver.extractTypeName('List<Map<String,String>>')).toBe('Map<String,String>')
+    })
+
+    test('formatFor maps only date-time and uuid', () => {
+      expect(TypeResolver.formatFor('LocalDateTime')).toBe('date-time')
+      expect(TypeResolver.formatFor('Date')).toBe('date-time')
+      expect(TypeResolver.formatFor('UUID')).toBe('uuid')
+      expect(TypeResolver.formatFor('int')).toBeUndefined()
+      expect(TypeResolver.formatFor('long')).toBeUndefined()
+      expect(TypeResolver.formatFor('double')).toBeUndefined()
+      expect(TypeResolver.formatFor('BigDecimal')).toBeUndefined()
+      expect(TypeResolver.formatFor('String')).toBeUndefined()
+    })
+
+    test('primitiveSchemaWithFormat layers format onto the primitive schema', () => {
+      expect(TypeResolver.primitiveSchemaWithFormat('LocalDateTime')).toEqual({ type: 'string', format: 'date-time' })
+      expect(TypeResolver.primitiveSchemaWithFormat('Date')).toEqual({ type: 'string', format: 'date-time' })
+      expect(TypeResolver.primitiveSchemaWithFormat('UUID')).toEqual({ type: 'string', format: 'uuid' })
+      expect(TypeResolver.primitiveSchemaWithFormat('int')).toEqual({ type: 'integer' })
+      expect(TypeResolver.primitiveSchemaWithFormat('double')).toEqual({ type: 'number' })
+      expect(TypeResolver.primitiveSchemaWithFormat('String')).toEqual({ type: 'string' })
+    })
+  })
 })
