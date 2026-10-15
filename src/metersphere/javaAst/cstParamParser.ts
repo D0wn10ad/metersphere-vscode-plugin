@@ -19,6 +19,7 @@
 import { ParsedParameter, ValidationConstraint } from '../javaParser';
 import { CstNode, CstToken, findFirst, text } from './cstWalk';
 import { AnnotationResult, AnnotationValue, booleanValue, firstString, readAnnotation } from './annotationReader';
+import { JavadocIndex } from './javadocIndex';
 
 /** Spring parameter annotations and the `in` kind each implies. */
 const KIND_BY_ANNOTATION: Record<string, 'path' | 'query' | 'body' | 'header'> = {
@@ -68,8 +69,13 @@ function buildConstraint(ann: AnnotationResult): ValidationConstraint {
   let value: string | number | undefined;
 
   if (type === 'Size') {
-    const minVal = numericValue(ann.values['min']);
-    const maxVal = numericValue(ann.values['max']);
+    // Positional form is the single-element array `@Size({1, 10})` (Java's
+    // single-element annotation cannot carry a bare comma list).
+    const pos = ann.positional[0];
+    const posMin = pos && pos.kind === 'array' ? numericValue(pos.value[0]) : numericValue(pos);
+    const posMax = pos && pos.kind === 'array' ? numericValue(pos.value[1]) : numericValue(ann.positional[1]);
+    const minVal = numericValue(ann.values['min']) ?? posMin;
+    const maxVal = numericValue(ann.values['max']) ?? posMax;
     if (minVal !== null || maxVal !== null) {
       value =
         minVal !== null && maxVal !== null
@@ -81,9 +87,12 @@ function buildConstraint(ann: AnnotationResult): ValidationConstraint {
       value = firstString(ann.values['message']);
     }
   } else if (type === 'Min' || type === 'Max') {
-    value = numericValue(ann.values['value']) ?? firstString(ann.values['message']);
+    value =
+      numericValue(ann.values['value']) ??
+      numericValue(ann.positional[0]) ??
+      firstString(ann.values['message']);
   } else if (type === 'Pattern') {
-    value = firstString(ann.values['regexp']);
+    value = firstString(ann.values['regexp']) ?? firstString(ann.positional[0]);
   }
 
   const constraint: ValidationConstraint = { type };
@@ -123,7 +132,12 @@ function paramDescription(anns: AnnotationResult[]): string | undefined {
  * Unannotated parameters are skipped (regex parity); a param carrying only `@Valid`
  * is skipped too (constraint modifier, not a kind).
  */
-export function parseParameters(methodNode: CstNode, source: string): ParsedParameter[] {
+export function parseParameters(
+  methodNode: CstNode,
+  source: string,
+  javadoc?: JavadocIndex,
+  methodLine?: number,
+): ParsedParameter[] {
   const mh = findFirst(methodNode, 'methodHeader');
   const mdec = mh ? findFirst(mh, 'methodDeclarator') : undefined;
   const fpl = mdec ? findFirst(mdec, 'formalParameterList') : undefined;
@@ -175,7 +189,11 @@ export function parseParameters(methodNode: CstNode, source: string): ParsedPara
     if (defaultValue !== undefined) {
       parsed.defaultValue = defaultValue;
     }
-    const desc = paramDescription(anns);
+    const desc =
+      paramDescription(anns) ??
+      (javadoc && methodLine !== undefined && declaratorName
+        ? javadoc.paramForAdjacent(methodLine, declaratorName)
+        : undefined);
     if (desc !== undefined) {
       parsed.description = desc;
     }

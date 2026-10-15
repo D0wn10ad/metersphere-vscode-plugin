@@ -34,6 +34,11 @@ export interface JavadocIndex {
   summaryForAdjacent(line: number): string | undefined;
   /** Full body of the immediately adjacent Javadoc (same adjacency rule). */
   bodyForAdjacent(line: number): string | undefined;
+  /**
+   * Description of `@param <paramName> ...` in the immediately adjacent Javadoc,
+   * or `undefined` when the comment is absent or has no such tag.
+   */
+  paramForAdjacent(line: number, paramName: string): string | undefined;
 }
 
 const JAVADOC_START = '/**';
@@ -118,5 +123,19 @@ export function buildJavadocIndex(source: string): JavadocIndex {
     return c ? bodyLines(c.image).join('\n') : undefined;
   }
 
-  return { forLine, summaryFor, summaryForAdjacent, bodyForAdjacent };
+  function paramForAdjacent(line: number, paramName: string): string | undefined {
+    const c = adjacent(line);
+    if (!c) {
+      return undefined;
+    }
+    for (const l of bodyLines(c.image)) {
+      const m = /^@param\s+(\S+)\s+(.+)$/.exec(l);
+      if (m && m[1] === paramName) {
+        return m[2].trim();
+      }
+    }
+    return undefined;
+  }
+
+  return { forLine, summaryFor, summaryForAdjacent, bodyForAdjacent, paramForAdjacent };
 }

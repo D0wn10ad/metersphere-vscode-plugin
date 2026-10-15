@@ -247,7 +247,7 @@ function parseMethod(md: CstNode, source: string, basePath: string, javadoc: Jav
     path,
     fullPath: basePath + path,
     summary,
-    parameters: parseParameters(md, source),
+    parameters: parseParameters(md, source, javadoc, methodLine),
   };
   const methodHeader = findFirst(md, 'methodHeader');
   const returnType = methodHeader ? methodReturnType(methodHeader, source) : undefined;

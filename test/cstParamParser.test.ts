@@ -11,7 +11,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { parseParameters } from '../src/metersphere/javaAst/cstParamParser';
 import { loadJavaParser } from '../src/metersphere/javaAst/loadJavaParser';
-import { CstNode, findAll } from '../src/metersphere/javaAst/cstWalk';
+import { CstNode, findAll, locationOf } from '../src/metersphere/javaAst/cstWalk';
+import { buildJavadocIndex } from '../src/metersphere/javaAst/javadocIndex';
 
 const fixture = (name: string): string =>
   fs.readFileSync(path.join(__dirname, 'fixtures', 'java', name), 'utf8');
@@ -171,5 +172,76 @@ describe('cstParamParser', () => {
       const md = findAll(tree, 'methodDeclaration')[0];
       expect(parseParameters(md, src)).toEqual([]);
     });
+  });
+});
+
+describe('cstParamParser — positional constraints + javadoc @param (T3)', () => {
+  const javadocController = (signature: string, extraImports: string[] = []): string =>
+    [
+      'package com.example.demo;',
+      'import org.springframework.web.bind.annotation.*;',
+      'import javax.validation.constraints.Min;',
+      'import javax.validation.constraints.Size;',
+      ...extraImports,
+      '@RestController',
+      'public class C {',
+      '  /**',
+      '   * List items.',
+      '   * @param page the page',
+      '   */',
+      '  @GetMapping("/x")',
+      `  public void h(${signature}) { }`,
+      '}',
+    ].join('\n');
+
+  it('captures positional @Min(1) as a NUMBER value', () => {
+    const src = javadocController('@RequestParam(defaultValue = "1", required = false) @Min(1) int page');
+    const { node, source } = firstMethodOf(src);
+    const params = parseParameters(node, source);
+    expect(params).toHaveLength(1);
+    expect(params[0].defaultValue).toBe('1');
+    expect(params[0].required).toBe(false);
+    expect(params[0].validation).toEqual([{ type: 'Min', value: 1 }]);
+    expect(params[0].validation![0].value).toBe(1); // number, not string
+  });
+
+  it('captures the single-element array form @Size({1, 10}) as the "1-10" range', () => {
+    const src = javadocController('@RequestParam @Size({1, 10}) String name');
+    const { node, source } = firstMethodOf(src);
+    const params = parseParameters(node, source);
+    expect(params[0].validation).toEqual([{ type: 'Size', value: '1-10' }]);
+  });
+
+  it('keeps named @Size(min = 1, max = 10) working (regression)', () => {
+    const src = javadocController('@RequestParam @Size(min = 1, max = 10) String name');
+    const { node, source } = firstMethodOf(src);
+    const params = parseParameters(node, source);
+    expect(params[0].validation).toEqual([{ type: 'Size', value: '1-10' }]);
+  });
+
+  it('fills description from the adjacent javadoc @param when no @ApiParam/@Parameter exists', () => {
+    const src = javadocController('@RequestParam int page');
+    const { node, source } = firstMethodOf(src);
+    const line = locationOf(node)!.startLine;
+    const params = parseParameters(node, source, buildJavadocIndex(source), line);
+    expect(params[0].description).toBe('the page');
+  });
+
+  it('prefers an explicit @ApiParam description over the javadoc @param', () => {
+    const src = javadocController(
+      '@ApiParam("explicit desc") @RequestParam int page',
+      ['import io.swagger.annotations.ApiParam;'],
+    );
+    const { node, source } = firstMethodOf(src);
+    const line = locationOf(node)!.startLine;
+    const params = parseParameters(node, source, buildJavadocIndex(source), line);
+    expect(params[0].description).toBe('explicit desc');
+  });
+
+  it('omits description when no javadoc index is passed (backward compatible)', () => {
+    const src = javadocController('@RequestParam int page');
+    const { node, source } = firstMethodOf(src);
+    const params = parseParameters(node, source);
+    expect(params[0].description).toBeUndefined();
   });
 });
