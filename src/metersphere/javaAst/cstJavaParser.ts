@@ -48,17 +48,20 @@ const MAPPING_VERBS: Record<string, HttpMethod> = {
 const VERB_PRIORITY: HttpMethod[] = ['POST', 'PUT', 'DELETE', 'PATCH', 'GET'];
 
 /** An annotation CST node paired with its structured read result. */
-interface ReadAnnotation {
+export interface ReadAnnotation {
   node: CstNode;
   read: AnnotationResult;
 }
 
 /**
- * Collect annotations from a `classModifier`/`methodModifier` array. Each modifier
- * entry is either `{annotation: [...]}` (keep) or a keyword wrapper like
- * `{Public: [...]}` (skip — no `annotation` child).
+ * Collect annotations from a `classModifier`/`methodModifier`/`fieldModifier`
+ * array. Each modifier entry is either `{annotation: [...]}` (keep) or a keyword
+ * wrapper like `{Public: [...]}` (skip — no `annotation` child).
+ *
+ * Exported (T1 of openapi-spec-coverage) for reuse by the symbol index — all
+ * three modifier lists share this exact shape. Pure read: no parse behavior change.
  */
-function annotationsFromModifiers(mods: CstNode[], source: string): ReadAnnotation[] {
+export function annotationsFromModifiers(mods: CstNode[], source: string): ReadAnnotation[] {
   const out: ReadAnnotation[] = [];
   for (const mod of mods) {
     const anns = (mod.children['annotation'] || []) as CstNode[];
@@ -67,6 +70,37 @@ function annotationsFromModifiers(mods: CstNode[], source: string): ReadAnnotati
     }
   }
   return out;
+}
+
+/**
+ * Read a `fieldDeclaration`'s annotations from `fieldDeclaration.children.fieldModifier`.
+ * The `fieldModifier` list may be ABSENT entirely for a field with no modifiers —
+ * hence `?? []` (the same shape as method/class modifiers otherwise).
+ */
+export function annotationsFromFieldDeclaration(fd: CstNode, source: string): ReadAnnotation[] {
+  const mods = (fd.children['fieldModifier'] ?? []) as CstNode[];
+  return annotationsFromModifiers(mods, source);
+}
+
+/**
+ * Declared return type of a `methodHeader`: the trimmed `unannType` source text of
+ * `methodHeader.children.result[0]`. Returns `undefined` when the result carries
+ * the `Void` token (a `void` method) or when there is no `result` child at all
+ * (constructor / methodDeclarator-only shapes) — i.e. "no response body".
+ */
+export function methodReturnType(mh: CstNode, source: string): string | undefined {
+  const result = mh.children['result']?.[0] as CstNode | undefined;
+  if (!result || result.name !== 'result') {
+    return undefined;
+  }
+  if (result.children['Void'] !== undefined) {
+    return undefined;
+  }
+  const unann = result.children['unannType']?.[0] as CstNode | undefined;
+  if (!unann) {
+    return undefined;
+  }
+  return text(unann, source).trim();
 }
 
 /** Resolve the path from a mapping annotation: `value=` > `path=` > positional, ARRAY first-element form. */
