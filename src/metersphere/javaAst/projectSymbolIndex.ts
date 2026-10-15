@@ -20,15 +20,26 @@ import * as path from 'path';
 import { JavaFileScanner } from '../javaFileScanner';
 import { CstNode, CstToken, findAll, findFirst, text } from './cstWalk';
 import { loadJavaParser } from './loadJavaParser';
+import { annotationsFromFieldDeclaration, annotationsFromModifiers, methodReturnType } from './cstJavaParser';
+import { readAnnotation } from './annotationReader';
+import { ValidationConstraint } from '../javaParser';
+import { applyValidation } from '../validationSchema';
 
 export interface ResolvedField {
   name: string;
   javaType: string;
+  validation?: ValidationConstraint[];
+  nullable?: boolean;
+  description?: string;
+  kind?: 'class' | 'enum' | 'record' | 'interface';
+  values?: string[];
 }
 
 export interface ResolvedDto {
   name: string;
   fields: ResolvedField[];
+  kind?: 'class' | 'enum' | 'record' | 'interface';
+  values?: string[];
 }
 
 const SYMBOL_KIND_NAMES = ['Class', 'Interface', 'Struct', 'Enum'];
@@ -77,20 +88,55 @@ export class ProjectSymbolIndex {
     }
     const typeDecls = (ocu.children['typeDeclaration'] || []) as CstNode[];
     for (const td of typeDecls) {
+      // java-parser wraps enum/record declarations inside a classDeclaration node
+      // (typeDeclaration → classDeclaration → enumDeclaration|recordDeclaration), so the
+      // class path only applies when a normalClassDeclaration is actually present.
       const cd = findFirst(td, 'classDeclaration');
-      if (!cd) {
+      const ncd = cd ? findFirst(cd, 'normalClassDeclaration') : undefined;
+      if (cd && ncd) {
+        const nameTok = findFirst(ncd, 'typeIdentifier')?.children['Identifier']?.[0] as CstToken | undefined;
+        if (nameTok) {
+          const dto = this.extractFields(ncd, source, nameTok.image);
+          if (dto) {
+            this.localTypes.set(nameTok.image, dto);
+          }
+        }
         continue;
       }
-      const ncd = findFirst(cd, 'normalClassDeclaration');
-      const nameTok = ncd
-        ? (findFirst(ncd, 'typeIdentifier')?.children['Identifier']?.[0] as CstToken | undefined)
-        : undefined;
-      if (!nameTok || !ncd) {
+      const ed = findFirst(td, 'enumDeclaration');
+      if (ed) {
+        const nameTok = findFirst(ed, 'typeIdentifier')?.children['Identifier']?.[0] as CstToken | undefined;
+        if (nameTok) {
+          const dto = this.extractEnum(ed, source, nameTok.image);
+          if (dto) {
+            this.localTypes.set(nameTok.image, dto);
+          }
+        }
         continue;
       }
-      const dto = this.extractFields(ncd, source, nameTok.image);
-      if (dto) {
-        this.localTypes.set(nameTok.image, dto);
+      const rd = findFirst(td, 'recordDeclaration');
+      if (rd) {
+        const nameTok = findFirst(rd, 'typeIdentifier')?.children['Identifier']?.[0] as CstToken | undefined;
+        if (nameTok) {
+          const dto = this.extractRecord(rd, source, nameTok.image);
+          if (dto) {
+            this.localTypes.set(nameTok.image, dto);
+          }
+        }
+        continue;
+      }
+      const idec = findFirst(td, 'interfaceDeclaration');
+      if (idec) {
+        const nid = findFirst(idec, 'normalInterfaceDeclaration');
+        const nameTok = nid
+          ? (findFirst(nid, 'typeIdentifier')?.children['Identifier']?.[0] as CstToken | undefined)
+          : undefined;
+        if (nameTok && nid) {
+          const dto = this.extractInterface(nid, source, nameTok.image);
+          if (dto) {
+            this.localTypes.set(nameTok.image, dto);
+          }
+        }
       }
     }
   }
@@ -236,18 +282,42 @@ export class ProjectSymbolIndex {
     }
     const typeDecls = (ocu.children['typeDeclaration'] || []) as CstNode[];
     for (const td of typeDecls) {
+      // Same wrapper quirk as register(): enum/record live inside classDeclaration.
       const cd = findFirst(td, 'classDeclaration');
-      if (!cd) {
+      const ncd = cd ? findFirst(cd, 'normalClassDeclaration') : undefined;
+      if (cd && ncd) {
+        const nameTok = findFirst(ncd, 'typeIdentifier')?.children['Identifier']?.[0] as CstToken | undefined;
+        if (nameTok?.image === typeName) {
+          return this.extractFields(ncd, source, typeName);
+        }
         continue;
       }
-      const ncd = findFirst(cd, 'normalClassDeclaration');
-      const nameTok = ncd
-        ? (findFirst(ncd, 'typeIdentifier')?.children['Identifier']?.[0] as CstToken | undefined)
-        : undefined;
-      if (nameTok?.image !== typeName || !ncd) {
+      const ed = findFirst(td, 'enumDeclaration');
+      if (ed) {
+        const nameTok = findFirst(ed, 'typeIdentifier')?.children['Identifier']?.[0] as CstToken | undefined;
+        if (nameTok?.image === typeName) {
+          return this.extractEnum(ed, source, typeName);
+        }
         continue;
       }
-      return this.extractFields(ncd, source, typeName);
+      const rd = findFirst(td, 'recordDeclaration');
+      if (rd) {
+        const nameTok = findFirst(rd, 'typeIdentifier')?.children['Identifier']?.[0] as CstToken | undefined;
+        if (nameTok?.image === typeName) {
+          return this.extractRecord(rd, source, typeName);
+        }
+        continue;
+      }
+      const idec = findFirst(td, 'interfaceDeclaration');
+      if (idec) {
+        const nid = findFirst(idec, 'normalInterfaceDeclaration');
+        const nameTok = nid
+          ? (findFirst(nid, 'typeIdentifier')?.children['Identifier']?.[0] as CstToken | undefined)
+          : undefined;
+        if (nameTok?.image === typeName && nid) {
+          return this.extractInterface(nid, source, typeName);
+        }
+      }
     }
     return undefined;
   }
@@ -268,16 +338,113 @@ export class ProjectSymbolIndex {
         const javaType = ut ? text(ut, source).trim() : '';
         const vdl = findFirst(fd, 'variableDeclaratorList');
         const declarators = vdl ? findAll(vdl, 'variableDeclarator') : [];
+        const annReads = annotationsFromFieldDeclaration(fd, source);
+        const validation: ValidationConstraint[] = [];
+        let description: string | undefined;
+        for (const ar of annReads) {
+          const name = ar.read.name;
+          if (name === 'Schema') {
+            const desc = ar.read.values['description'] ?? ar.read.positional[0];
+            if (desc && desc.kind === 'string') {
+              description = desc.value;
+            }
+            continue;
+          }
+          if (name === 'NotNull' || name === 'NotBlank' || name === 'NotEmpty' || name === 'Size' || name === 'Min' || name === 'Max' || name === 'Pattern' || name === 'Email') {
+            const val = ar.read.values['value'] ?? ar.read.positional[0];
+            let v: string | number | undefined;
+            if (val) {
+              if (val.kind === 'string') v = val.value;
+              else if (val.kind === 'number') v = val.value;
+            }
+            validation.push({ type: name, value: v });
+          }
+        }
         for (const d of declarators) {
           const idTok = findFirst(d, 'variableDeclaratorId')?.children['Identifier']?.[0] as
             | CstToken
             | undefined;
+          if (idTok) {
+            const field: ResolvedField = { name: idTok.image, javaType };
+            if (validation.length > 0) field.validation = validation;
+            if (description) field.description = description;
+            fields.push(field);
+          }
+        }
+      }
+    }
+    return { name: typeName, fields };
+  }
+
+  private extractEnum(ed: CstNode, source: string, typeName: string): ResolvedDto {
+    const values: string[] = [];
+    const enumBody = findFirst(ed, 'enumBody');
+    if (enumBody) {
+      const constants = findAll(enumBody, 'enumConstant');
+      for (const ec of constants) {
+        const idTok = ec.children['Identifier']?.[0] as CstToken | undefined;
+        if (idTok) {
+          values.push(idTok.image);
+        }
+      }
+    }
+    return { name: typeName, fields: [], kind: 'enum', values };
+  }
+
+  private extractRecord(rd: CstNode, source: string, typeName: string): ResolvedDto {
+    const fields: ResolvedField[] = [];
+    const rh = findFirst(rd, 'recordHeader');
+    if (rh) {
+      const rcl = findFirst(rh, 'recordComponentList');
+      if (rcl) {
+        const comps = (rcl.children['recordComponent'] || []) as CstNode[];
+        for (const c of comps) {
+          const ut = findFirst(c, 'unannType');
+          const javaType = ut ? text(ut, source).trim() : '';
+          const idTok = c.children['Identifier']?.[0] as CstToken | undefined;
           if (idTok) {
             fields.push({ name: idTok.image, javaType });
           }
         }
       }
     }
-    return { name: typeName, fields };
+    return { name: typeName, fields, kind: 'record' };
+  }
+
+  private extractInterface(nid: CstNode, source: string, typeName: string): ResolvedDto {
+    const fields: ResolvedField[] = [];
+    const ib = findFirst(nid, 'interfaceBody');
+    if (ib) {
+      const members = (ib.children['interfaceMemberDeclaration'] || []) as CstNode[];
+      for (const m of members) {
+        const imd = findFirst(m, 'interfaceMethodDeclaration');
+        if (imd) {
+          const mh = findFirst(imd, 'methodHeader');
+          if (mh) {
+            const javaType = methodReturnType(mh, source) ?? '';
+            const declarator = findFirst(mh, 'methodDeclarator');
+            const idTok = declarator?.children['Identifier']?.[0] as CstToken | undefined;
+            if (idTok) {
+              fields.push({ name: idTok.image, javaType });
+            }
+          }
+        }
+        const cd = findFirst(m, 'constantDeclaration');
+        if (cd) {
+          const ut = findFirst(cd, 'unannType');
+          const javaType = ut ? text(ut, source).trim() : '';
+          const vdl = findFirst(cd, 'variableDeclaratorList');
+          if (vdl) {
+            const vd = (vdl.children['variableDeclarator'] || [])[0] as CstNode | undefined;
+            const vdi = vd ? findFirst(vd, 'variableDeclaratorId') : undefined;
+            const idTok = vdi?.children['Identifier']?.[0] as CstToken | undefined;
+            if (idTok) {
+              fields.push({ name: idTok.image, javaType });
+            }
+          }
+        }
+      }
+    }
+    return { name: typeName, fields, kind: 'interface' };
   }
 }

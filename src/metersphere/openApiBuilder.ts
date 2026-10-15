@@ -141,7 +141,8 @@ export class OpenApiBuilder {
   /** Expand a ResolvedDto into `properties` (each field through fieldSchema). */
   private static expandedSchema(dto: ResolvedDto, schemas: Record<string, any>): any {
     const properties: Record<string, any> = {}
-    for (const field of dto.fields) {
+    const fields = dto.fields ?? []
+    for (const field of fields) {
       properties[field.name] = OpenApiBuilder.fieldSchema(field.javaType, schemas)
     }
     return { type: 'object', properties }

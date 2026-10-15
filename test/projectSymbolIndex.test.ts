@@ -8,6 +8,8 @@
  */
 
 import { ProjectSymbolIndex } from '../src/metersphere/javaAst/projectSymbolIndex';
+import { OpenApiBuilder, getUploadSymbolIndex, resetUploadSymbolIndex } from '../src/metersphere/openApiBuilder';
+import { ParseResult } from '../src/metersphere/javaParser';
 
 interface MockConfig {
   hover?: (...args: never[]) => unknown;
@@ -170,5 +172,141 @@ describe('projectSymbolIndex', () => {
     await idx.resolve('EdgeDTO');
 
     expect(spyCalls).toHaveLength(1); // the second resolve hit the cache
+  });
+});
+
+describe('projectSymbolIndex — enum/record/interface extraction + field annotations (T6)', () => {
+  const enumSrc = [
+    'package com.example.dto;',
+    'public enum Status {',
+    '  ACTIVE, INACTIVE',
+    '}',
+  ].join('\n');
+
+  const annotatedDtoSrc = [
+    'package com.example.dto;',
+    'import javax.validation.constraints.*;',
+    'import io.swagger.v3.oas.annotations.media.Schema;',
+    'public class UserDto {',
+    '  @Schema(description = "the name")',
+    '  @NotNull',
+    '  @Size(min = 1, max = 10)',
+    '  private String name;',
+    '  @Min(1)',
+    '  private int count;',
+    '}',
+  ].join('\n');
+
+  const recordSrc = [
+    'package com.example.dto;',
+    'public record Point(int x, String label) {}',
+  ].join('\n');
+
+  const interfaceSrc = [
+    'package com.example.dto;',
+    'public interface Shape {',
+    '  int MAX = 10;',
+    '  String name();',
+    '  double area();',
+    '}',
+  ].join('\n');
+
+  it('(e) registers an enum source as {kind:"enum", values:[...]} with an empty fields array', () => {
+    setMock({ symbols: () => [] });
+    const idx = new ProjectSymbolIndex(50);
+    idx.register(enumSrc, 'file:///Status.java');
+
+    const resolved = idx.resolveSync('Status');
+
+    expect(resolved).toBeDefined();
+    expect(resolved!.kind).toBe('enum');
+    expect(resolved!.values).toEqual(['ACTIVE', 'INACTIVE']);
+    expect(resolved!.fields).toEqual([]); // guarded: never undefined
+  });
+
+  it('(f) attaches validation constraints and @Schema description to fields', () => {
+    setMock({ symbols: () => [] });
+    const idx = new ProjectSymbolIndex(50);
+    idx.register(annotatedDtoSrc, 'file:///UserDto.java');
+
+    const resolved = idx.resolveSync('UserDto');
+
+    expect(resolved).toBeDefined();
+    const name = resolved!.fields.find((f) => f.name === 'name');
+    expect(name).toBeDefined();
+    expect(name!.description).toBe('the name');
+    expect(name!.validation).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'NotNull' }),
+        expect.objectContaining({ type: 'Size' }),
+      ]),
+    );
+    const count = resolved!.fields.find((f) => f.name === 'count');
+    expect(count!.validation).toEqual([expect.objectContaining({ type: 'Min' })]);
+  });
+
+  it('(g) extracts record components as fields with kind "record"', () => {
+    setMock({ symbols: () => [] });
+    const idx = new ProjectSymbolIndex(50);
+    idx.register(recordSrc, 'file:///Point.java');
+
+    const resolved = idx.resolveSync('Point');
+
+    expect(resolved).toBeDefined();
+    expect(resolved!.kind).toBe('record');
+    expect(resolved!.fields.map((f) => [f.name, f.javaType])).toEqual([
+      ['x', 'int'],
+      ['label', 'String'],
+    ]);
+  });
+
+  it('(h) extracts interface methods AND constants as best-effort fields with kind "interface"', () => {
+    setMock({ symbols: () => [] });
+    const idx = new ProjectSymbolIndex(50);
+    idx.register(interfaceSrc, 'file:///Shape.java');
+
+    const resolved = idx.resolveSync('Shape');
+
+    expect(resolved).toBeDefined();
+    expect(resolved!.kind).toBe('interface');
+    const byName = new Map(resolved!.fields.map((f) => [f.name, f.javaType]));
+    // methods ride on methodHeader→result→unannType (T1 caveat); constants are constantDeclaration nodes
+    expect(byName.get('name')).toBe('String');
+    expect(byName.get('area')).toBe('double');
+    expect(byName.get('MAX')).toBe('int');
+  });
+
+  it('(i) building a doc whose body field resolves to an enum does not throw', () => {
+    setMock({ symbols: () => [] });
+    resetUploadSymbolIndex();
+    const idx = getUploadSymbolIndex();
+    idx.register(enumSrc, 'file:///Status.java');
+    idx.register(
+      [
+        'package com.example.dto;',
+        'public class TaskDto {',
+        '  private Status status;',
+        '  private String title;',
+        '}',
+      ].join('\n'),
+      'file:///TaskDto.java',
+    );
+
+    const parseResult: ParseResult = {
+      classes: [],
+      apis: [
+        {
+          method: 'POST',
+          path: '/tasks',
+          fullPath: '/tasks',
+          summary: 'Create task',
+          parameters: [{ name: 'body', in: 'body', type: 'TaskDto' }],
+        },
+      ],
+    };
+
+    expect(() => OpenApiBuilder.build(parseResult, 'Enum Doc')).not.toThrow();
+    const doc = OpenApiBuilder.build(parseResult, 'Enum Doc');
+    expect(doc.components?.schemas).toBeDefined();
   });
 });
