@@ -40,6 +40,42 @@ const MAPPING_VERBS: Record<string, HttpMethod> = {
 };
 
 /**
+ * `@ResponseStatus` enum-name → HTTP code (`HttpStatus.CREATED` → 201). Keyed by
+ * the simple name after the last dot, so both `HttpStatus.CREATED` and a bare
+ * `CREATED` resolve; unknown names leave `responseStatus` undefined.
+ */
+const HTTP_STATUS_BY_ENUM_NAME: Readonly<Record<string, number>> = Object.freeze({
+  OK: 200,
+  CREATED: 201,
+  ACCEPTED: 202,
+  NO_CONTENT: 204,
+  RESET_CONTENT: 205,
+  PARTIAL_CONTENT: 206,
+  MOVED_PERMANENTLY: 301,
+  FOUND: 302,
+  SEE_OTHER: 303,
+  NOT_MODIFIED: 304,
+  TEMPORARY_REDIRECT: 307,
+  BAD_REQUEST: 400,
+  UNAUTHORIZED: 401,
+  FORBIDDEN: 403,
+  NOT_FOUND: 404,
+  METHOD_NOT_ALLOWED: 405,
+  NOT_ACCEPTABLE: 406,
+  REQUEST_TIMEOUT: 408,
+  CONFLICT: 409,
+  GONE: 410,
+  PRECONDITION_FAILED: 412,
+  UNSUPPORTED_MEDIA_TYPE: 415,
+  TOO_MANY_REQUESTS: 429,
+  INTERNAL_SERVER_ERROR: 500,
+  NOT_IMPLEMENTED: 501,
+  BAD_GATEWAY: 502,
+  SERVICE_UNAVAILABLE: 503,
+  GATEWAY_TIMEOUT: 504,
+});
+
+/**
  * Verb collapse priority for `@RequestMapping(method = {...})`: the first verb
  * present in POST > PUT > DELETE > PATCH > GET wins; HEAD/OPTIONS are not
  * representable in `ParsedApi.method`, so a lone HEAD (or an empty/absent
@@ -213,6 +249,27 @@ function parseMethod(md: CstNode, source: string, basePath: string, javadoc: Jav
     summary,
     parameters: parseParameters(md, source),
   };
+  const methodHeader = findFirst(md, 'methodHeader');
+  const returnType = methodHeader ? methodReturnType(methodHeader, source) : undefined;
+  if (returnType !== undefined) {
+    api.returnType = returnType;
+  }
+  const statusAnn = anns.find((a) => a.read.name === 'ResponseStatus');
+  if (statusAnn) {
+    const raw =
+      statusAnn.read.values['code'] ?? statusAnn.read.values['value'] ?? statusAnn.read.positional[0];
+    if (raw) {
+      if (raw.kind === 'identifier') {
+        const simple = raw.value.split('.').pop() ?? '';
+        const code = HTTP_STATUS_BY_ENUM_NAME[simple];
+        if (code !== undefined) {
+          api.responseStatus = code;
+        }
+      } else if (raw.kind === 'number') {
+        api.responseStatus = raw.value;
+      }
+    }
+  }
   if (description !== undefined) {
     api.description = description;
   }

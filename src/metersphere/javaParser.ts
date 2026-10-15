@@ -14,6 +14,8 @@ export interface ParsedApi {
   description?: string;
   parameters: ParsedParameter[];
   position?: { line: number; column: number };
+  returnType?: string;
+  responseStatus?: number;
 }
 
 export interface ParsedParameter {

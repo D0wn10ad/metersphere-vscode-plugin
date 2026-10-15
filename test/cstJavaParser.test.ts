@@ -264,4 +264,59 @@ describe('cstJavaParser', () => {
       expect(result.apis[0].summary).toBe('V3 op');
     });
   });
+
+  describe('returnType + responseStatus (T2)', () => {
+    const parse = (methodDecl: string, imports: string[] = []): ParseResult =>
+      parseJavaCst(
+        [
+          'package com.example.demo;',
+          'import org.springframework.web.bind.annotation.*;',
+          'import org.springframework.http.HttpStatus;',
+          'import org.springframework.web.bind.annotation.ResponseStatus;',
+          ...imports,
+          '@RestController',
+          'public class C {',
+          methodDecl,
+          '}',
+        ].join('\n'),
+        'file:///C.java',
+      );
+
+    it('captures the declared return type text', () => {
+      const result = parse('  @GetMapping("/x")\n  public Response<X> m() { return null; }');
+      expect(result.apis).toHaveLength(1);
+      expect(result.apis[0].returnType).toBe('Response<X>');
+    });
+
+    it('captures @ResponseStatus(HttpStatus.CREATED) as 201 (positional identifier)', () => {
+      const result = parse(
+        '  @ResponseStatus(HttpStatus.CREATED)\n  @PostMapping("/x")\n  public X m() { return null; }',
+      );
+      expect(result.apis[0].responseStatus).toBe(201);
+    });
+
+    it('captures the named form @ResponseStatus(code = HttpStatus.NOT_FOUND) as 404', () => {
+      const result = parse(
+        '  @ResponseStatus(code = HttpStatus.NOT_FOUND)\n  @GetMapping("/x")\n  public void m() { }',
+      );
+      expect(result.apis[0].responseStatus).toBe(404);
+    });
+
+    it('leaves returnType undefined for void methods', () => {
+      const result = parse('  @GetMapping("/x")\n  public void m() { }');
+      expect(result.apis[0].returnType).toBeUndefined();
+    });
+
+    it('leaves responseStatus undefined for an unknown status enum name', () => {
+      const result = parse(
+        '  @ResponseStatus(HttpStatus.SOMETHING_ELSE)\n  @GetMapping("/x")\n  public X m() { return null; }',
+      );
+      expect(result.apis[0].responseStatus).toBeUndefined();
+    });
+
+    it('omits both fields entirely when no @ResponseStatus and void (regex-parser parity: no crash)', () => {
+      const result = parse('  @GetMapping("/x")\n  public void m() { }');
+      expect(result.apis[0]).not.toHaveProperty('responseStatus');
+    });
+  });
 });
