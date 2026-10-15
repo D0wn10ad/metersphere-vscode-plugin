@@ -272,20 +272,8 @@ export class CommandRouter {
             const isFile = filePaths[0].endsWith('.java')
             let filesToUpload: string[] = []
 
-            if (isFile && filePaths.length > 1) {
+            if (isFile) {
               filesToUpload = filePaths
-            } else if (isFile) {
-              const projectRoot = await JavaFileScanner.findProjectRoot(filePaths[0])
-              if (projectRoot) {
-                const searchPaths = JavaFileScanner.getCommonProjectPaths(projectRoot)
-                for (const searchPath of searchPaths) {
-                  const found = await JavaFileScanner.findJavaFilesInProject(searchPath, (msg: string, count: number) => {
-                    SidebarView.postMessage({ command: 'uploadProgress', data: { message: `${msg} (${count})` } })
-                  })
-                  filesToUpload.push(...found)
-                }
-                filesToUpload = [...new Set(filesToUpload)]
-              }
             } else {
               const scanPath = filePaths[0]
               const projectRoot = await JavaFileScanner.findProjectRoot(scanPath)

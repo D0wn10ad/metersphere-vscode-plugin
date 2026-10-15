@@ -148,16 +148,13 @@ describe('CommandRouter scan handlers (single terminal scanComplete)', () => {
     jest.useRealTimers()
   })
 
-  test('uploadFromFileExplorer happy: stubbed scan returns files -> exactly one scanComplete with the file list', async () => {
-    ;(JavaFileScanner.findProjectRoot as jest.Mock).mockResolvedValue('/proj')
-    ;(JavaFileScanner.getCommonProjectPaths as jest.Mock).mockReturnValue(['/src'])
-    ;(JavaFileScanner.findJavaFilesInProject as jest.Mock).mockResolvedValue(['A.java'])
-
+  test('uploadFromFileExplorer single file -> scanComplete carries that file only (no project scan)', async () => {
     await commands.get('metersphere.uploadFromFileExplorer')?.([new FakeUri('/proj/src/A.java')])
 
     const calls = scanCompleteCalls()
     expect(calls).toHaveLength(1)
-    expect(calls[0]).toEqual({ command: 'scanComplete', data: { files: ['A.java'] } })
+    expect(calls[0]).toEqual({ command: 'scanComplete', data: { files: ['/proj/src/A.java'] } })
+    expect(JavaFileScanner.findJavaFilesInProject).not.toHaveBeenCalled()
   })
 
   test('uploadFromFileExplorer multi-select (clickedUri, selectedUris) -> scans BOTH files, no undefined entries', async () => {
@@ -174,10 +171,6 @@ describe('CommandRouter scan handlers (single terminal scanComplete)', () => {
   })
 
   test('uploadFromFileExplorer single-select (uri, [sameUri]) -> deduplicates to ONE file entry', async () => {
-    ;(JavaFileScanner.findProjectRoot as jest.Mock).mockResolvedValue('/proj')
-    ;(JavaFileScanner.getCommonProjectPaths as jest.Mock).mockReturnValue(['/src'])
-    ;(JavaFileScanner.findJavaFilesInProject as jest.Mock).mockResolvedValue(['A.java'])
-
     await commands.get('metersphere.uploadFromFileExplorer')?.([
       new FakeUri('/proj/src/A.java'),
       [new FakeUri('/proj/src/A.java')],
@@ -186,13 +179,15 @@ describe('CommandRouter scan handlers (single terminal scanComplete)', () => {
     const calls = scanCompleteCalls()
     expect(calls).toHaveLength(1)
     const files = (calls[0].data as { files: unknown[] }).files
-    expect(files).toEqual(['A.java'])
+    expect(files).toEqual(['/proj/src/A.java'])
   })
 
-  test('uploadFromFileExplorer failure: scan throws -> exactly one scanComplete with files:[] + error', async () => {
-    ;(JavaFileScanner.findProjectRoot as jest.Mock).mockResolvedValue(null)
+  test('uploadFromFileExplorer folder with no controllers -> exactly one scanComplete with files:[] + error', async () => {
+    ;(JavaFileScanner.findProjectRoot as jest.Mock).mockResolvedValue('/proj')
+    ;(JavaFileScanner.getCommonProjectPaths as jest.Mock).mockReturnValue(['/src'])
+    ;(JavaFileScanner.findJavaFilesInProject as jest.Mock).mockResolvedValue([])
 
-    await commands.get('metersphere.uploadFromFileExplorer')?.([new FakeUri('/proj/src/A.java')])
+    await commands.get('metersphere.uploadFromFileExplorer')?.([new FakeUri('/proj/src')])
 
     const calls = scanCompleteCalls()
     expect(calls).toHaveLength(1)
@@ -258,7 +253,7 @@ describe('CommandRouter scan handlers (single terminal scanComplete)', () => {
     ;(JavaFileScanner.getCommonProjectPaths as jest.Mock).mockReturnValue(['/src'])
     ;(JavaFileScanner.findJavaFilesInProject as jest.Mock).mockReturnValue(new Promise<string[]>(() => {}))
 
-    const done = commands.get('metersphere.uploadFromFileExplorer')?.([new FakeUri('/proj/src/A.java')])
+    const done = commands.get('metersphere.uploadFromFileExplorer')?.([new FakeUri('/proj/src')])
     await flushMicrotasks()
     jest.advanceTimersByTime(60_001)
     await done

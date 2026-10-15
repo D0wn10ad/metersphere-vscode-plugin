@@ -289,5 +289,10 @@ describe('sidebarView', () => {
       SidebarView.handleMessage({ command: 'webviewError', data: { message: 'boom', lineno: 42 } }, 'controlPanel');
       expect(errorSpy).toHaveBeenCalledWith('Sync', expect.stringContaining('"message":"boom"'));
     });
+
+    it('javaFilesSelected updates the status line (stale "Found N Java files" no longer persists)', () => {
+      const html = SidebarView.getControlPanelHtml();
+      expect(html).toContain("'Selected ' + selectedFiles.length + ' Java file(s)'");
+    });
   });
 });

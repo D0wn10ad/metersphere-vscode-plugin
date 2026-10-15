@@ -1231,6 +1231,7 @@ window.addEventListener('message', function(event) {
     fileList.innerHTML = selectedFiles.length === 0
       ? '<div style="font-style:italic">No files selected</div>'
       : selectedFiles.map(function(f) { return '<div class="file-list-item">' + String(f).split('/').pop().split('\\\\').pop() + '</div>'; }).join('');
+    showStatus(selectedFiles.length === 0 ? 'No files selected' : 'Selected ' + selectedFiles.length + ' Java file(s)', 'success');
     if (selectedFiles.length > 0) uploadEnabled = true;
     setUploadEnabled(uploadEnabled);
   } else if (msg.command === 'scanningStarted') {
