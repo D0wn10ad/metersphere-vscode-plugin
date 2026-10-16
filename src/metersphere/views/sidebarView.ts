@@ -4,6 +4,7 @@ import { JavaParser } from '../javaParser'
 import { SyncService } from '../syncService'
 import { loadRules } from '../rulesLoader'
 import { resolveServiceRootPathFromDir } from '../serviceRootPathResolver'
+import { resolveServerVersion } from '../versionProbe'
 import FormData from 'form-data'
 import { DebugLogger } from '../debugLogger'
 import { ContextHolder } from '../contextHolder'
@@ -366,7 +367,14 @@ export class SidebarView {
       SidebarView.postMessage({ command: 'uploadProgress', data: { message: 'Uploading to MeterSphere...' } })
 
       const isFullCoverage = uploadData.mode === 'fullCoverage'
-      const serverVersion = SettingsManager.getServerVersion()
+      const probeHeaders = SettingsManager.buildAuthHeaders('application/json') as Record<string, string>
+      const probe = await resolveServerVersion(msUrl, probeHeaders)
+      if (probe.warning) {
+        DebugLogger.log('Sync', 'Version probe fallback', { warning: probe.warning })
+      }
+      const serverVersion = probe.version
+      const versionLabel = serverVersion === 'v3' ? ' (v3 — experimental/untested)' : ''
+      SidebarView.postMessage({ command: 'uploadProgress', data: { message: `Uploading to MeterSphere${versionLabel}...` } })
 
       for (const entry of uploadPlan) {
         // Create FormData with proper multipart format
@@ -473,11 +481,6 @@ export class SidebarView {
           responseTextLength: responseText.length,
         })
 
-        if (response.ok) {
-          SidebarView.postMessage({ command: 'uploadSuccess', data: { count: allApis.apis.length } })
-        } else {
-          SidebarView.postMessage({ command: 'uploadError', data: { message: `Upload failed: ${response.status} ${responseText}` } })
-        }
         if (!response.ok) {
           SidebarView.postMessage({ command: 'uploadError', data: { message: `Upload failed (${entry.filename}): ${response.status} ${responseText}` } })
           return
@@ -485,6 +488,32 @@ export class SidebarView {
       }
 
       SidebarView.postMessage({ command: 'uploadSuccess', data: { count: allApis.apis.length, documents: uploadPlan.length } })
+
+      // Post-import verification (informational, never blocks): where did the rows land?
+      try {
+        const verifyHeaders = SettingsManager.buildAuthHeaders('application/json') as Record<string, string>
+        const verifyResp = await fetch(`${msUrl}/api/api/definition/list/all`, {
+          method: 'POST',
+          headers: verifyHeaders,
+          body: JSON.stringify({ projectId, protocol: 'HTTP' }),
+        })
+        const verifyText = await verifyResp.text()
+        let verification = `Post-import check: HTTP ${verifyResp.status}`
+        try {
+          const rows = (JSON.parse(verifyText)?.data ?? []) as Array<Record<string, unknown>>
+          const unplanned = rows.filter((r) => r.moduleId === 'root' || r.moduleName === '未规划接口').length
+          verification += `, ${rows.length} definitions visible, ${unplanned} in 未规划接口 (informational)`
+          if (uploadPlan.length > 1) {
+            verification += `; dual-upload sent ${uploadPlan.length} documents — confirm both rows materialized (branch-differentiated URLs should satisfy dedup)`
+          }
+        } catch {
+          // non-JSON body: keep the status-only summary
+        }
+        DebugLogger.log('Sync', 'Post-import verification', { verification })
+        SidebarView.postMessage({ command: 'uploadVerification', data: { message: verification } })
+      } catch (verifyError) {
+        DebugLogger.log('Sync', 'Post-import verification skipped', { error: String(verifyError) })
+      }
     } catch (error) {
       DebugLogger.error('Sync', 'Upload failed', error)
       SidebarView.postMessage({ command: 'uploadError', data: { message: `Error: ${error instanceof Error ? error.message : String(error)}` } })
@@ -1354,6 +1383,8 @@ window.addEventListener('message', function(event) {
     showStatus(msg.data?.message || '', 'loading');
   } else if (msg.command === 'uploadSuccess') {
     showStatus('Successfully uploaded ' + (msg.data?.count || 0) + ' APIs to MeterSphere!', 'success');
+  } else if (msg.command === 'uploadVerification') {
+    showStatus(msg.data?.message || '', 'success');
   } else if (msg.command === 'uploadError') {
     showStatus('Error: ' + (msg.data?.message || 'Unknown error'), 'error');
   } else if (msg.command === 'environmentsLoaded') {

@@ -1,35 +1,6 @@
 import * as vscode from 'vscode'
 import * as crypto from 'crypto'
 
-/**
- * Derive exactly 16 bytes from a credential string for AES-128-CBC.
- *
- * MeterSphere access/secret keys are normally 16 ASCII characters, and the
- * server derives its key/IV as the raw UTF-8 bytes of the stored credentials.
- * When the input is already 16 bytes, this returns those bytes VERBATIM
- * (no hashing, padding, or truncation) so live-server authentication is
- * byte-for-byte unchanged.
- *
- * For any other length (which can never authenticate against a real server,
- * since the server uses the credential's raw 16 bytes), this produces a
- * deterministic 16-byte buffer instead of letting `crypto.createCipheriv`
- * throw an opaque "Invalid key length" / "Invalid IV length" error:
- * - longer than 16 bytes → the first 16 bytes (`subarray(0, 16)`)
- * - shorter than 16 bytes → zero-padded to 16 bytes
- */
-export function toAes128Bytes(credential: string): Buffer {
-  const raw = Buffer.from(credential, 'utf8')
-  if (raw.length === 16) {
-    return raw
-  }
-  if (raw.length > 16) {
-    return raw.subarray(0, 16)
-  }
-  const padded = Buffer.alloc(16)
-  raw.copy(padded, 0)
-  return padded
-}
-
 export class SettingsManager {
   // Global keys (user settings)
   static ACCESS_KEY_KEY = 'metersphere.accessKey'
@@ -103,9 +74,7 @@ export class SettingsManager {
   }
 
   static getExportFormat(): string {
-    const stored = vscode.workspace.getConfiguration().get<string>(SettingsManager.EXPORT_FORMAT_KEY) ?? 'swagger3'
-    // Legacy mapping: a stored 'swagger2' always produced OpenAPI 3.0.3 anyway.
-    return stored === 'swagger2' ? 'swagger3' : stored
+    return vscode.workspace.getConfiguration().get<string>(SettingsManager.EXPORT_FORMAT_KEY) ?? 'postman'
   }
 
   static setExportFormat(format: string): void {
@@ -113,7 +82,22 @@ export class SettingsManager {
   }
 
   static getServerVersion(): string {
-    return vscode.workspace.getConfiguration().get<string>(SettingsManager.SERVER_VERSION_KEY) ?? 'v3'
+    return vscode.workspace.getConfiguration().get<string>(SettingsManager.SERVER_VERSION_KEY) ?? 'auto'
+  }
+
+  /** In-memory session cache for the probed server version ('auto' mode). */
+  private static probedServerVersion: 'v2' | 'v3' | undefined
+
+  static getCachedServerVersion(): 'v2' | 'v3' | undefined {
+    return SettingsManager.probedServerVersion
+  }
+
+  static setCachedServerVersion(version: 'v2' | 'v3'): void {
+    SettingsManager.probedServerVersion = version
+  }
+
+  static resetServerVersionCache(): void {
+    SettingsManager.probedServerVersion = undefined
   }
 
   static isRejectUnauthorized(): boolean {
@@ -150,8 +134,8 @@ export class SettingsManager {
     const uuid = crypto.randomUUID()
     const timestamp = Date.now()
     const plaintext = `${ak}|${uuid}|${timestamp}`
-    const key = toAes128Bytes(sk)
-    const iv = toAes128Bytes(ak)
+    const key = Buffer.from(sk, 'utf8')
+    const iv = Buffer.from(ak, 'utf8')
     const cipher = crypto.createCipheriv('aes-128-cbc', key, iv)
     let sig = cipher.update(plaintext, 'utf8', 'base64')
     sig += cipher.final('base64')
