@@ -14,7 +14,7 @@ import { TypeResolver } from './typeResolver';
 export interface UploadedParse {
   result: ParseResult;
   fileCount: number;
-  /** The resolved file list, surfaced so every file reaches the Javadoc step. */
+  /** Successfully parsed files only, surfaced so every one reaches the Javadoc step. */
   files: string[];
 }
 
@@ -86,28 +86,40 @@ export async function parseUploadedFiles(
   isOpenApi = false,
 ): Promise<UploadedParse> {
   const result: ParseResult = { classes: [], apis: [] };
+  const parsedFiles: string[] = [];
   const symbolIndex = getUploadSymbolIndex();
   // Start each upload from a clean index so a type registered (or resolved) by a
   // prior upload cannot leak into this one.
   symbolIndex.clearAll();
   for (const filePath of filePaths) {
-    const code = await readText(filePath);
     try {
-      // Register the source so OpenApiBuilder's DTO expansion can resolve types
-      // declared in any uploaded file (same-file and cross-file alike).
-      symbolIndex.register(code, filePath);
+      const code = await readText(filePath);
+      try {
+        // Register the source so OpenApiBuilder's DTO expansion can resolve types
+        // declared in any uploaded file (same-file and cross-file alike).
+        symbolIndex.register(code, filePath);
+      } catch (err) {
+        DebugLogger.log('Sync', 'Symbol registration failed for file; DTO expansion may be limited', {
+          filePath,
+          error: String(err),
+        });
+      }
+      const parsed = parseJava(code, filePath);
+      result.classes.push(...parsed.result.classes);
+      result.apis.push(...parsed.result.apis);
+      parsedFiles.push(filePath);
     } catch (err) {
-      DebugLogger.log('Sync', 'Symbol registration failed for file; DTO expansion may be limited', {
+      // One malformed/unreadable file must not abort the whole upload: log it
+      // by name and continue with the remaining files. The pre-pass below runs
+      // on the accumulated result, so it never sees types from the skipped file.
+      DebugLogger.error('Sync', 'Skipping file after parse failure', {
         filePath,
         error: String(err),
       });
     }
-    const parsed = parseJava(code, filePath);
-    result.classes.push(...parsed.result.classes);
-    result.apis.push(...parsed.result.apis);
   }
   if (isOpenApi) {
     await resolveDependencyTypes(result);
   }
-  return { result, fileCount: filePaths.length, files: [...filePaths] };
+  return { result, fileCount: parsedFiles.length, files: parsedFiles };
 }

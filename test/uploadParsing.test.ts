@@ -8,6 +8,7 @@
 
 import { parseUploadedFiles } from '../src/metersphere/uploadParsing';
 import { OpenApiBuilder, getUploadSymbolIndex, resetUploadSymbolIndex } from '../src/metersphere/openApiBuilder';
+import type * as javaParserDispatch from '../src/metersphere/javaParserDispatch';
 
 const controllerSrc = (path: string): string =>
   [
@@ -199,5 +200,54 @@ describe('uploadParsing — async DTO pre-pass (T11)', () => {
     const uploadB = await parseUploadedFiles(['file:///virtual/c.java'], async () => controllerWithExternal, true);
     doc = OpenApiBuilder.build(uploadB.result, 'T11');
     expect(doc.components?.schemas?.ExternalDto.properties.age).toEqual({ type: 'integer' });
+  });
+});
+
+describe('uploadParsing — per-file error isolation', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+    resetUploadSymbolIndex();
+  });
+
+  it('a file that throws during read is skipped by name; the next file still yields its APIs', async () => {
+    const readText = async (p: string): Promise<string> => {
+      if (p === 'bad.java') {
+        throw new Error('file vanished');
+      }
+      return controllerSrc('/good');
+    };
+
+    const { result, fileCount, files } = await parseUploadedFiles(['bad.java', 'good.java'], readText);
+
+    expect(result.apis).toHaveLength(1);
+    expect(result.apis[0].path).toBe('/good');
+    expect(result.classes).toHaveLength(1);
+    expect(fileCount).toBe(1);
+    expect(files).toEqual(['good.java']);
+  });
+
+  it('a file whose parseJava throws does not abort the upload; the second file still yields its APIs (OpenAPI pre-pass runs on the consistent result)', async () => {
+    const dispatch = require('../src/metersphere/javaParserDispatch') as typeof javaParserDispatch;
+    const realParseJava = dispatch.parseJava;
+    jest
+      .spyOn(dispatch, 'parseJava')
+      .mockImplementation((code: string, uri: string) => {
+        if (uri.endsWith('bad.java')) {
+          throw new Error('parse exploded');
+        }
+        return realParseJava(code, uri);
+      });
+
+    const { result, fileCount, files } = await parseUploadedFiles(
+      ['bad.java', 'good.java'],
+      async p => controllerSrc(`/${p}`),
+      true,
+    );
+
+    expect(result.apis).toHaveLength(1);
+    expect(result.apis[0].path).toBe('/good.java');
+    expect(result.classes).toHaveLength(1);
+    expect(fileCount).toBe(1);
+    expect(files).toEqual(['good.java']);
   });
 });

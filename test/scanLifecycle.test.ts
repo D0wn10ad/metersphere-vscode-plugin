@@ -1,4 +1,4 @@
-import { runScanWithTerminalMessage, ScanLifecycleOptions } from '../src/metersphere/scanLifecycle'
+import { runScanWithTerminalMessage, ScanLifecycleOptions, DEFAULT_SCAN_HARD_TIMEOUT_MS } from '../src/metersphere/scanLifecycle'
 import { DebugLogger } from '../src/metersphere/debugLogger'
 
 function makeOpts(overrides: Partial<ScanLifecycleOptions>): { opts: ScanLifecycleOptions; posted: Record<string, unknown>[] } {
@@ -144,6 +144,121 @@ describe('runScanWithTerminalMessage', () => {
       await pending
 
       expect(errorSpy).toHaveBeenCalledWith('Sync', 'Scan failed', { label: 'test', error: 'scan timed out' })
+    })
+  })
+
+  describe('hardening', () => {
+    test('settles and posts exactly one error scanComplete when scan() throws synchronously', async () => {
+      const { opts, posted } = makeOpts({
+        scan: () => {
+          throw new Error('sync boom')
+        },
+      })
+
+      const files = await runScanWithTerminalMessage(opts)
+
+      expect(files).toEqual([])
+      expect(posted).toHaveLength(1)
+      expect(posted[0]).toEqual({ command: 'scanComplete', data: { files: [], error: 'sync boom' } })
+    })
+
+    test.each([NaN, 0, -1, Infinity])(
+      'invalid hardTimeoutMs %p falls back to the default timeout instead of firing early or never',
+      async badTimeout => {
+        jest.useFakeTimers()
+        const { opts, posted } = makeOpts({
+          scan: () => new Promise<string[]>(() => {}),
+          hardTimeoutMs: badTimeout,
+        })
+
+        const pending = runScanWithTerminalMessage(opts)
+        jest.advanceTimersByTime(DEFAULT_SCAN_HARD_TIMEOUT_MS - 1)
+        expect(posted).toHaveLength(0)
+
+        jest.advanceTimersByTime(2)
+        await pending
+
+        expect(posted).toHaveLength(1)
+        expect(posted[0]).toEqual({ command: 'scanComplete', data: { files: [], error: 'scan timed out' } })
+      }
+    )
+
+    test('a throwing post still resolves with the files on the success path', async () => {
+      const { opts } = makeOpts({
+        scan: async () => ['A.java'],
+        post: () => {
+          throw new Error('panel disposed')
+        },
+      })
+
+      const files = await runScanWithTerminalMessage(opts)
+
+      expect(files).toEqual(['A.java'])
+    })
+
+    test('a throwing post still resolves [] and still invokes onError on the error path', async () => {
+      const onError = jest.fn()
+      const { opts } = makeOpts({
+        scan: async () => {
+          throw new Error('boom')
+        },
+        post: () => {
+          throw new Error('panel disposed')
+        },
+        onError,
+      })
+
+      const files = await runScanWithTerminalMessage(opts)
+
+      expect(files).toEqual([])
+      expect(onError).toHaveBeenCalledTimes(1)
+      expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'boom' }))
+    })
+
+    test('a throwing onError still resolves with the error envelope posted', async () => {
+      const { opts, posted } = makeOpts({
+        scan: async () => {
+          throw new Error('boom')
+        },
+        onError: () => {
+          throw new Error('observer blew up')
+        },
+      })
+
+      const files = await runScanWithTerminalMessage(opts)
+
+      expect(files).toEqual([])
+      expect(posted).toHaveLength(1)
+      expect(posted[0]).toEqual({ command: 'scanComplete', data: { files: [], error: 'boom' } })
+    })
+
+    test('even a throwing post cannot break the settled guard: timeout + late resolution posts exactly once', async () => {
+      jest.useFakeTimers()
+      const post = jest.fn(() => {
+        throw new Error('panel disposed')
+      })
+      let releaseScan: ((files: string[]) => void) | undefined
+      const { opts } = makeOpts({
+        scan: () => new Promise<string[]>(resolve => {
+          releaseScan = resolve
+        }),
+        post,
+      })
+
+      const pending = runScanWithTerminalMessage(opts)
+      jest.advanceTimersByTime(DEFAULT_SCAN_HARD_TIMEOUT_MS + 1)
+      await pending
+      expect(post).toHaveBeenCalledTimes(1)
+
+      releaseScan?.(['late.java'])
+      await Promise.resolve()
+      await Promise.resolve()
+
+      expect(post).toHaveBeenCalledTimes(1)
+      expect(post).toHaveBeenCalledWith({
+        command: 'scanComplete',
+        data: { files: [], error: 'scan timed out' },
+      })
     })
   })
 })

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode'
 import * as fs from 'fs'
 import * as path from 'path'
+import { DebugLogger } from './debugLogger'
 
 export interface JavaFileInfo {
   filePath: string
@@ -42,24 +43,46 @@ export class JavaFileScanner {
     onProgress?: (message: string, count: number) => void
   ): Promise<string[]> {
     const files: string[] = []
-    const entries = fs.readdirSync(dirPath, { withFileTypes: true })
+    let entries: fs.Dirent[]
+    try {
+      entries = fs.readdirSync(dirPath, { withFileTypes: true })
+    } catch (err) {
+      // Unreadable directory (permissions, vanished, I/O error): skip it and
+      // let the caller continue with whatever was already collected.
+      DebugLogger.log('Sync', 'Skipping unreadable directory during walk', {
+        dirPath,
+        error: String(err),
+      })
+      return files
+    }
 
     for (const entry of entries) {
-      const fullPath = path.join(dirPath, entry.name)
+      try {
+        const fullPath = path.join(dirPath, entry.name)
 
-      if (entry.isDirectory()) {
-        if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === 'target' || entry.name === 'build') {
-          continue
+        // Dirent type checks describe the entry itself, so symlinked
+        // directories report isDirectory() === false and are never followed —
+        // symlink cycles are unreachable with this walk.
+        if (entry.isDirectory()) {
+          if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === 'target' || entry.name === 'build') {
+            continue
+          }
+
+          const subFiles = await this.walkDirectory(fullPath, onProgress)
+          files.push(...subFiles)
+        } else if (entry.isFile() && entry.name.endsWith('.java')) {
+          files.push(fullPath)
+
+          if (onProgress && files.length % 10 === 0) {
+            onProgress(`Found ${files.length} Java files...`, files.length)
+          }
         }
-        
-        const subFiles = await this.walkDirectory(fullPath, onProgress)
-        files.push(...subFiles)
-      } else if (entry.isFile() && entry.name.endsWith('.java')) {
-        files.push(fullPath)
-        
-        if (onProgress && files.length % 10 === 0) {
-          onProgress(`Found ${files.length} Java files...`, files.length)
-        }
+      } catch (err) {
+        // One bad entry must not abort the whole scan: log and continue.
+        DebugLogger.log('Sync', 'Skipping directory entry during walk', {
+          entry: path.join(dirPath, entry.name),
+          error: String(err),
+        })
       }
     }
 
