@@ -207,7 +207,7 @@ export class ProjectSymbolIndex {
       if (!symbols || symbols.length === 0) {
         return undefined;
       }
-      const hit = symbols.find((s) => isTypeKind(s.kind));
+      const hit = symbols.find((s) => isTypeKind(s.kind) && s.name === typeName);
       const uri = hit?.location?.uri;
       if (!uri) {
         return undefined;
@@ -453,11 +453,12 @@ export class ProjectSymbolIndex {
           const javaType = ut ? text(ut, source).trim() : '';
           const vdl = findFirst(cd, 'variableDeclaratorList');
           if (vdl) {
-            const vd = (vdl.children['variableDeclarator'] || [])[0] as CstNode | undefined;
-            const vdi = vd ? findFirst(vd, 'variableDeclaratorId') : undefined;
-            const idTok = vdi?.children['Identifier']?.[0] as CstToken | undefined;
-            if (idTok) {
-              fields.push({ name: idTok.image, javaType });
+            for (const vd of (vdl.children['variableDeclarator'] || []) as CstNode[]) {
+              const vdi = findFirst(vd, 'variableDeclaratorId');
+              const idTok = vdi?.children['Identifier']?.[0] as CstToken | undefined;
+              if (idTok) {
+                fields.push({ name: idTok.image, javaType });
+              }
             }
           }
         }

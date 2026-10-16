@@ -12,6 +12,77 @@
 
 import { CstNode, CstToken, findFirst, findAll, text } from './cstWalk';
 
+/**
+ * Decode the escape sequences of a Java string literal body (the text between the
+ * surrounding quotes). Handles the standard escapes plus `\uXXXX`; an unknown
+ * escape keeps the escaped character verbatim (e.g. `\q` → `q`).
+ */
+function decodeJavaString(raw: string): string {
+  let out = '';
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (ch !== '\\') {
+      out += ch;
+      continue;
+    }
+    const next = raw[i + 1];
+    if (next === undefined) {
+      out += '\\';
+      break;
+    }
+    switch (next) {
+      case 'n':
+        out += '\n';
+        i++;
+        break;
+      case 'r':
+        out += '\r';
+        i++;
+        break;
+      case 't':
+        out += '\t';
+        i++;
+        break;
+      case 'b':
+        out += '\b';
+        i++;
+        break;
+      case 'f':
+        out += '\f';
+        i++;
+        break;
+      case '"':
+        out += '"';
+        i++;
+        break;
+      case "'":
+        out += "'";
+        i++;
+        break;
+      case '\\':
+        out += '\\';
+        i++;
+        break;
+      case 'u': {
+        const hex = raw.slice(i + 2, i + 6);
+        if (/^[0-9a-fA-F]{4}$/.test(hex)) {
+          out += String.fromCharCode(parseInt(hex, 16));
+          i += 5;
+        } else {
+          out += 'u';
+          i++;
+        }
+        break;
+      }
+      default:
+        out += next;
+        i++;
+        break;
+    }
+  }
+  return out;
+}
+
 export type AnnotationValue =
   | { kind: 'string'; value: string }
   | { kind: 'number'; value: number }
@@ -56,7 +127,7 @@ function readElementValue(ev: CstNode, source: string): AnnotationValue {
   if (lit) {
     const img = text(lit, source).trim();
     if (img.startsWith('"')) {
-      return { kind: 'string', value: img.slice(1, -1) };
+      return { kind: 'string', value: decodeJavaString(img.slice(1, -1)) };
     }
     if (img === 'true' || img === 'false') {
       return { kind: 'boolean', value: img === 'true' };
@@ -84,7 +155,15 @@ export function readAnnotation(annotationNode: CstNode, source: string): Annotat
   const values: Record<string, AnnotationValue> = {};
   const positional: AnnotationValue[] = [];
 
-  const pairs = findAll(annotationNode, 'elementValuePair');
+  // Only the annotation's OWN pairs: `elementValuePairList` is a direct child, and
+  // its `elementValuePair` children are the direct pairs. A recursive findAll would
+  // also collect pairs belonging to a NESTED annotation value (e.g. `@Foo(bar = @Baz(x = 1))`
+  // would leak `x` into Foo's values).
+  const pairLists = (annotationNode.children['elementValuePairList'] || []) as CstNode[];
+  const pairs: CstNode[] = [];
+  for (const pl of pairLists) {
+    pairs.push(...((pl.children['elementValuePair'] || []) as CstNode[]));
+  }
   for (const pair of pairs) {
     const keyTok = pair.children['Identifier']?.[0] as CstToken | undefined;
     if (!keyTok) {

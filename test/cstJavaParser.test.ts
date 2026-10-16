@@ -382,3 +382,53 @@ describe('cstJavaParser — methodName/className capture (T10)', () => {
     expect(result.apis[0].className).toBe('TaskController')
   })
 })
+
+describe('cstJavaParser — nested classes + path joining', () => {
+  it('emits only the outer class methods, never a nested class\'s methods', () => {
+    const src = [
+      'package com.example.demo;',
+      'import org.springframework.web.bind.annotation.*;',
+      '@RestController',
+      'public class Outer {',
+      '  @GetMapping("/o")',
+      '  public void o() { }',
+      '  public static class Inner {',
+      '    @GetMapping("/i")',
+      '    public void i() { }',
+      '  }',
+      '}',
+    ].join('\n');
+    const result = parseJavaCst(src, 'file:///Outer.java');
+    expect(result.apis.map((a) => a.path)).toEqual(['/o']);
+  });
+
+  it('joins a trailing-slash base with a leading-slash method without a double slash', () => {
+    const src = [
+      'package com.example.demo;',
+      'import org.springframework.web.bind.annotation.*;',
+      '@RestController',
+      '@RequestMapping("/api/")',
+      'public class C {',
+      '  @GetMapping("/x")',
+      '  public void x() { }',
+      '}',
+    ].join('\n');
+    const result = parseJavaCst(src, 'file:///C.java');
+    expect(result.apis[0].fullPath).toBe('/api/x');
+  });
+
+  it('normalizes a base and method that both lack a leading slash', () => {
+    const src = [
+      'package com.example.demo;',
+      'import org.springframework.web.bind.annotation.*;',
+      '@RestController',
+      '@RequestMapping("api")',
+      'public class C {',
+      '  @GetMapping("x")',
+      '  public void x() { }',
+      '}',
+    ].join('\n');
+    const result = parseJavaCst(src, 'file:///C.java');
+    expect(result.apis[0].fullPath).toBe('/api/x');
+  });
+})

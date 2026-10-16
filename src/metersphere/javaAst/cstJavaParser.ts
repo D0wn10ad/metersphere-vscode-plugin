@@ -22,7 +22,7 @@
 
 import { ParsedApi, ParsedClass, ParseResult } from '../javaParser';
 import { loadJavaParser } from './loadJavaParser';
-import { CstNode, CstToken, findAll, findFirst, locationOf, text } from './cstWalk';
+import { CstNode, CstToken, findFirst, locationOf, text } from './cstWalk';
 import { AnnotationResult, AnnotationValue, firstString, readAnnotation } from './annotationReader';
 import { parseParameters } from './cstParamParser';
 import { buildJavadocIndex, JavadocIndex } from './javadocIndex';
@@ -149,6 +149,19 @@ function mappingPath(ann: AnnotationResult): string {
   );
 }
 
+/**
+ * Join a class base path and a method path into a single normalized path: exactly
+ * one `/` between the two segments (never `//`), always a leading `/`, and `/` when
+ * both are empty. A trailing slash on the base or a leading slash on the method is
+ * collapsed.
+ */
+function joinPath(base: string, sub: string): string {
+  const b = base.replace(/\/+$/, '');
+  const s = sub.replace(/^\/+/, '');
+  const combined = s === '' ? b : `${b}/${s}`;
+  return combined.startsWith('/') ? combined : `/${combined}`;
+}
+
 /** Pull every verb name out of a `method = {...}` value (identifiers like RequestMethod.GET). */
 function verbNames(v: AnnotationValue | undefined): string[] {
   if (!v) {
@@ -245,7 +258,7 @@ function parseMethod(md: CstNode, source: string, basePath: string, javadoc: Jav
   const api: ParsedApi = {
     method,
     path,
-    fullPath: basePath + path,
+    fullPath: joinPath(basePath, path),
     summary,
     parameters: parseParameters(md, source, javadoc, methodLine),
   };
@@ -430,7 +443,16 @@ export function parseJavaCst(source: string, uri: string): ParseResult {
     }
     const classBody = ncd ? findFirst(ncd, 'classBody') : undefined;
     if (classBody) {
-      for (const md of findAll(classBody, 'methodDeclaration')) {
+      // Only the class's OWN methods: walk direct classBodyDeclaration →
+      // classMemberDeclaration → methodDeclaration. A recursive findAll would also
+      // descend into a nested class's body and emit its methods as this class's APIs.
+      const bodyDecls = (classBody.children['classBodyDeclaration'] || []) as CstNode[];
+      for (const cbd of bodyDecls) {
+        const cmd = findFirst(cbd, 'classMemberDeclaration');
+        const md = cmd ? (cmd.children['methodDeclaration']?.[0] as CstNode | undefined) : undefined;
+        if (!md) {
+          continue;
+        }
         const api = parseMethod(md, source, basePath, javadoc);
         if (api) {
           api.className = name;

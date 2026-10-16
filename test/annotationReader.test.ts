@@ -98,3 +98,30 @@ describe('annotationReader', () => {
     expect(max && max.kind === 'number' ? max.value : undefined).toBe(10);
   });
 });
+
+describe('annotationReader — nested annotations + string escapes', () => {
+  function parseAnnotations(src: string): AnnotationResult[] {
+    const cst = loadJavaParser().parse(src);
+    return findAll(cst, 'annotation').map((n) => readAnnotation(n, src));
+  }
+
+  it('reads only the OUTER annotation pairs, never a nested annotation\'s pairs', () => {
+    const src = 'class C { @Foo(bar = @Baz(x = 1)) void m() {} }';
+    const foo = parseAnnotations(src).find((a) => a.name === 'Foo');
+    expect(foo).toBeDefined();
+    expect(Object.keys(foo!.values)).toEqual(['bar']);
+    expect(foo!.values['x']).toBeUndefined();
+  });
+
+  it('decodes Java string escapes in annotation string values', () => {
+    const src = 'class C { @Foo(value = "a\\nb\\t\\"c\\\\d") void m() {} }';
+    const foo = parseAnnotations(src).find((a) => a.name === 'Foo');
+    expect(firstString(foo!.values['value'])).toBe('a\nb\t"c\\d');
+  });
+
+  it('decodes a \\uXXXX unicode escape', () => {
+    const src = 'class C { @Foo(value = "\\u0041") void m() {} }';
+    const foo = parseAnnotations(src).find((a) => a.name === 'Foo');
+    expect(firstString(foo!.values['value'])).toBe('A');
+  });
+});

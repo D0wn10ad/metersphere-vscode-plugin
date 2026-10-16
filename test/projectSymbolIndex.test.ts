@@ -310,3 +310,37 @@ describe('projectSymbolIndex — enum/record/interface extraction + field annota
     expect(doc.components?.schemas).toBeDefined();
   });
 });
+
+describe('projectSymbolIndex — LSP name match + multi-declarator constants', () => {
+  it('(j) ignores an LSP symbol whose name does not match the requested type', async () => {
+    setMock({
+      symbols: () => [{ name: 'WrongName', kind: 'Class', location: { uri: 'file:///dto.java' } }],
+      documents: { 'file:///dto.java': dtoSrc },
+    });
+    const idx = new ProjectSymbolIndex(50);
+    idx.register(controllerWithoutDto, 'file:///C.java');
+
+    const resolved = await idx.resolve('EdgeDTO');
+
+    expect(resolved).toBeUndefined();
+  });
+
+  it('(k) extracts ALL constants from a multi-declarator interface constant', () => {
+    const multiConstSrc = [
+      'package com.example.dto;',
+      'public interface Limits {',
+      '  int A = 1, B = 2;',
+      '}',
+    ].join('\n');
+    setMock({ symbols: () => [] });
+    const idx = new ProjectSymbolIndex(50);
+    idx.register(multiConstSrc, 'file:///Limits.java');
+
+    const resolved = idx.resolveSync('Limits');
+
+    expect(resolved).toBeDefined();
+    const names = resolved!.fields.map((f) => f.name);
+    expect(names).toContain('A');
+    expect(names).toContain('B');
+  });
+});

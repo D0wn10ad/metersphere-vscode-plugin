@@ -178,10 +178,14 @@ export function parseParameters(
       : (param.children['Identifier']?.[0] as CstToken | undefined);
     const declaratorName = nameTok?.image ?? '';
 
+    const explicitRequired = booleanValue(kindAnn.values['required']);
+    const defaultValue = firstString(kindAnn.values['defaultValue']);
     const parsed: ParsedParameter = {
       name: nameOverride(kindAnn) || declaratorName || KIND_FALLBACK[kind],
       in: kind,
-      required: booleanValue(kindAnn.values['required']) ?? REQUIRED_DEFAULT[kind],
+      // A parameter with a defaultValue is never required in Spring unless `required`
+      // is set explicitly; otherwise fall back to the per-kind default.
+      required: explicitRequired ?? (defaultValue !== undefined ? false : REQUIRED_DEFAULT[kind]),
     };
     if (kindAnn.name === 'RequestPart') {
       parsed.part = true;
@@ -192,7 +196,6 @@ export function parseParameters(
     if (typeText) {
       parsed.type = typeText;
     }
-    const defaultValue = firstString(kindAnn.values['defaultValue']);
     if (defaultValue !== undefined) {
       parsed.defaultValue = defaultValue;
     }

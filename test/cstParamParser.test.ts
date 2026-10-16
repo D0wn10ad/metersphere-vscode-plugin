@@ -280,3 +280,20 @@ describe('cstParamParser — @RequestPart + @CookieValue (T12)', () => {
     expect(params[0]).toMatchObject({ name: 'sid', in: 'cookie', required: false });
   });
 });
+
+describe('cstParamParser — defaultValue implies not-required', () => {
+  it('forces required=false when a defaultValue is present, even on a path param', () => {
+    const { node, source } = firstMethodOf(controller('@PathVariable(defaultValue = "x") String id'));
+    const params = parseParameters(node, source);
+    expect(params).toHaveLength(1);
+    expect(params[0].required).toBe(false);
+  });
+
+  it('still honors an explicit required=true alongside a defaultValue', () => {
+    const { node, source } = firstMethodOf(
+      controller('@RequestParam(defaultValue = "x", required = true) String q'),
+    );
+    const params = parseParameters(node, source);
+    expect(params[0].required).toBe(true);
+  });
+});
