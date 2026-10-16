@@ -109,6 +109,12 @@
           "type": "string",
           "default": ".metersphere/rules.json",
           "description": "Workspace-relative path to the runtime rules JSON file used for sync branch/placement routing"
+        },
+        "metersphere.defaultBranch": {
+          "type": "string",
+          "enum": ["eapi", "iapi", "none"],
+          "default": "eapi",
+          "description": "Fallback sync branch when no manual override, runtime rule, Javadoc @category, or annotation tag matches. 'none' keeps the API in the selected module without branch URL shaping."
         }
       }
     },

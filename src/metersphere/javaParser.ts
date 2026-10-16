@@ -24,6 +24,8 @@ export interface ParsedApi {
   securityRequirement?: string;
   methodName?: string;
   className?: string;
+  /** Raw Javadoc `@category` (method-level preferred, class-level fallback); validated by categoryResolver. */
+  category?: string;
 }
 
 export interface ParsedParameter {
@@ -309,6 +311,42 @@ const ANNOTATION_PATTERNS = {
   validated: /@Validated(?:\([^)]*\))?/g,
 };
 
+/** Extract the raw `@category <value>` from a Javadoc block, if present. */
+function extractJavadocCategoryFromBlock(block: string): string | undefined {
+  const m = /@category\s+([A-Za-z0-9_.-]+)/.exec(block);
+  return m ? m[1] : undefined;
+}
+
+/**
+ * Nearest Javadoc `@category` above `anchorIdx` (a mapping-annotation index).
+ * The Javadoc must be contiguous with the annotation — no `}` between its end
+ * and the anchor — so a previous method's Javadoc is never picked up.
+ */
+function findMethodJavadocCategory(code: string, anchorIdx: number): string | undefined {
+  const windowStart = Math.max(0, anchorIdx - 400);
+  const window = code.slice(windowStart, anchorIdx);
+  const endIdx = window.lastIndexOf('*/');
+  if (endIdx < 0) return undefined;
+  const blockStart = window.lastIndexOf('/**', endIdx);
+  if (blockStart < 0) return undefined;
+  const between = window.slice(endIdx + 2);
+  if (between.includes('}')) return undefined; // crossed a method boundary
+  return extractJavadocCategoryFromBlock(window.slice(blockStart, endIdx + 2));
+}
+
+/** Class-level Javadoc `@category` (contiguous Javadoc immediately before the class declaration). */
+function findClassJavadocCategory(code: string, classDeclIdx: number): string | undefined {
+  const windowStart = Math.max(0, classDeclIdx - 600);
+  const window = code.slice(windowStart, classDeclIdx);
+  const endIdx = window.lastIndexOf('*/');
+  if (endIdx < 0) return undefined;
+  const blockStart = window.lastIndexOf('/**', endIdx);
+  if (blockStart < 0) return undefined;
+  const between = window.slice(endIdx + 2);
+  if (/[};]/.test(between)) return undefined; // crossed a boundary
+  return extractJavadocCategoryFromBlock(window.slice(blockStart, endIdx + 2));
+}
+
 export class JavaParser {
   static parseSource(code: string, uri: string): ParseResult {
     const result: ParseResult = { classes: [], apis: [] };
@@ -326,6 +364,10 @@ export class JavaParser {
 
     const classMatch = code.match(/class\s+(\w+)/);
     const className = classMatch ? classMatch[1] : 'Unknown';
+    const classDeclIdx = classMatch?.index;
+    const classCategory = typeof classDeclIdx === 'number' && classDeclIdx > 0
+      ? findClassJavadocCategory(code, classDeclIdx)
+      : undefined;
 
     // Anchor the class-body boundary to the SAME class declaration used for
     // className — a bare indexOf('class') can land inside a string, a comment,
@@ -379,6 +421,7 @@ export class JavaParser {
           fullPath: basePath + path,
           parameters: [],
           position: { line: 0, column: match.index },
+          category: findMethodJavadocCategory(code, match.index) ?? classCategory,
         };
 
         let methodEnd = -1;
@@ -661,6 +704,7 @@ export class JavaParser {
         fullPath: basePath + path,
         parameters: [],
         position: { line: 0, column: rmMatch.index },
+        category: findMethodJavadocCategory(code, rmMatch.index) ?? classCategory,
       };
 
       const annotationEnd = rmMatch.index + rmMatch[0].length;
