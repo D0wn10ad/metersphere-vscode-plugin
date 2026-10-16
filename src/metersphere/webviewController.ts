@@ -3,6 +3,7 @@ import { httpRequest } from './httpClient'
 import { SettingsManager } from './settingsManager'
 import { DebugLogger } from './debugLogger'
 import { resolveVariables, parseEnvVariables, EnvironmentVariables } from './variableResolver'
+import { escapeHtml, escapeHtmlJs } from './escapeHtml'
 
 export class WebViewController {
   private panel?: vscode.WebviewPanel
@@ -170,7 +171,7 @@ export class WebViewController {
   }
 
   private getHtml(): string {
-    const msUrl = SettingsManager.getMsUrl() || ''
+    const msUrl = escapeHtml(SettingsManager.getMsUrl() || '')
     
     return `<!DOCTYPE html>
 <html lang="en">
@@ -341,6 +342,7 @@ export class WebViewController {
   
   <script>
     const vscode = acquireVsCodeApi();
+    ${escapeHtmlJs}
     
     (function() {
       document.getElementById('addHeaderBtn').addEventListener('click', addHeader);
@@ -407,12 +409,12 @@ export class WebViewController {
         
         const statusDiv = document.getElementById('statusBadge');
         if (resp.error) {
-          statusDiv.innerHTML = '<span class="status-badge status-error">Error: ' + resp.error + '</span>';
+          statusDiv.innerHTML = '<span class="status-badge status-error">Error: ' + escapeHtml(resp.error) + '</span>';
         } else {
           const statusClass = resp.status >= 200 && resp.status < 300 ? 'status-2xx' : 
                             resp.status >= 400 && resp.status < 500 ? 'status-4xx' : 
                             resp.status >= 500 ? 'status-5xx' : 'status-error';
-          statusDiv.innerHTML = '<span class="status-badge ' + statusClass + '">' + resp.status + ' ' + (resp.statusText || '') + '</span>';
+          statusDiv.innerHTML = '<span class="status-badge ' + statusClass + '">' + escapeHtml(resp.status) + ' ' + escapeHtml(resp.statusText || '') + '</span>';
         }
       } else if (msg.command === 'environmentsLoaded') {
         const sel = document.getElementById('envSelect');

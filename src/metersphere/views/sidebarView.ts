@@ -9,6 +9,7 @@ import { parseUploadedFiles } from '../uploadParsing'
 import { prependContextPath, applyContextPathToPaths } from '../contextPath'
 import { resolveUploadPlatform } from '../uploadPlatform'
 import { httpRequest } from '../httpClient'
+import { escapeHtml, escapeHtmlJs } from '../escapeHtml'
 
 export class SidebarView {
   private static views: Record<string, vscode.WebviewView> = {}
@@ -209,8 +210,8 @@ export class SidebarView {
     switch (message.command) {
       case 'saveSettings':
         SettingsManager.setMsUrl(message.data.msUrl)
-        SettingsManager.setAccessKey(message.data.accessKey)
-        SettingsManager.setSecretKey(message.data.secretKey)
+        if (message.data.accessKey) SettingsManager.setAccessKey(message.data.accessKey)
+        if (message.data.secretKey) SettingsManager.setSecretKey(message.data.secretKey)
         SettingsManager.setDebugEnabled(message.data.debugEnabled ?? false)
         if (message.data.exportFormat) SettingsManager.setExportFormat(message.data.exportFormat)
         if (message.data.rejectUnauthorized !== undefined) SettingsManager.setRejectUnauthorized(message.data.rejectUnauthorized)
@@ -613,6 +614,7 @@ export class SidebarView {
   <div id="content"><p class="empty">Loading environments...</p></div>
   <script>
     const vscode = acquireVsCodeApi();
+    ${escapeHtmlJs}
     document.getElementById('envRefreshBtn').addEventListener('click', function() { document.getElementById('content').innerHTML = '<p class="empty">Loading environments...</p>'; vscode.postMessage({ command: 'loadEnvironments' }); });
     vscode.postMessage({ command: 'loadEnvironments' });
 
@@ -629,7 +631,7 @@ export class SidebarView {
             var details = '';
             if (e.config) {
               var c = e.config;
-              details += '<div class="env-detail"><strong>Config:</strong> ' + (c.protocol || 'HTTP') + '://' + (c.host || '-') + ':' + (c.port || '') + '</div>';
+              details += '<div class="env-detail"><strong>Config:</strong> ' + escapeHtml(c.protocol || 'HTTP') + '://' + escapeHtml(c.host || '-') + ':' + escapeHtml(c.port || '') + '</div>';
             }
             if (e.variables) {
               try {
@@ -639,13 +641,13 @@ export class SidebarView {
               } catch(e) {}
             }
             if (e.description) {
-              details += '<div class="env-detail">' + e.description + '</div>';
+              details += '<div class="env-detail">' + escapeHtml(e.description) + '</div>';
             }
-            return '<div class="env-card"><div class="env-name">' + (e.name || 'Unnamed') + '</div>' + details + '</div>';
+            return '<div class="env-card"><div class="env-name">' + escapeHtml(e.name || 'Unnamed') + '</div>' + details + '</div>';
           }).join('');
         }
       } else if (data.command === 'environmentsError') {
-        document.getElementById('content').innerHTML = '<p class="empty" style="color:var(--vscode-errorForeground)">' + (data.data?.message || 'Failed to load') + '</p>';
+        document.getElementById('content').innerHTML = '<p class="empty" style="color:var(--vscode-errorForeground)">' + escapeHtml(data.data?.message || 'Failed to load') + '</p>';
       }
     });
 
@@ -730,6 +732,7 @@ export class SidebarView {
   <div id="content"><p class="empty">Loading history...</p></div>
   <script>
     const vscode = acquireVsCodeApi();
+    ${escapeHtmlJs}
     document.getElementById('historyClearBtn').addEventListener('click', function() { if (confirm('Clear all request history?')) { vscode.postMessage({ command: 'clearHistory' }); } });
     document.getElementById('content').addEventListener('click', function(e) {
       var item = e.target.closest('.history-item');
@@ -765,16 +768,16 @@ export class SidebarView {
           container.innerHTML = history.map(function(item) {
             var method = (item.method || 'GET').toUpperCase();
             var statusClass = item.success ? 'status-success' : 'status-fail';
-            return '<div class="history-item" data-method="' + method + '" data-url="' + (item.url || '').replace(/"/g, '&quot;') + '">' +
-              '<span class="history-method ' + methodClass(item.method) + '">' + method + '</span>' +
-              '<span class="history-url" title="' + (item.url || '').replace(/"/g, '&quot;') + '">' + (item.url || '') + '</span>' +
-              '<span class="history-status ' + statusClass + '">' + (item.status || '-') + '</span>' +
+            return '<div class="history-item" data-method="' + escapeHtml(method) + '" data-url="' + escapeHtml(item.url || '') + '">' +
+              '<span class="history-method ' + methodClass(item.method) + '">' + escapeHtml(method) + '</span>' +
+              '<span class="history-url" title="' + escapeHtml(item.url || '') + '">' + escapeHtml(item.url || '') + '</span>' +
+              '<span class="history-status ' + statusClass + '">' + escapeHtml(item.status || '-') + '</span>' +
               '<span class="history-time">' + timeAgo(item.timestamp) + '</span>' +
               '</div>';
           }).join('');
         }
       } else if (data.command === 'historyError') {
-        document.getElementById('content').innerHTML = '<p class="empty" style="color:var(--vscode-errorForeground)">' + (data.data?.message || 'Failed to load history') + '</p>';
+        document.getElementById('content').innerHTML = '<p class="empty" style="color:var(--vscode-errorForeground)">' + escapeHtml(data.data?.message || 'Failed to load history') + '</p>';
       }
     });
 
@@ -796,6 +799,8 @@ export class SidebarView {
     const msUrl = SettingsManager.getMsUrl() ?? ''
     const accessKey = SettingsManager.getAccessKey() ?? ''
     const secretKey = SettingsManager.getSecretKey() ?? ''
+    const accessKeyPlaceholder = accessKey ? '•••••••• (unchanged)' : 'Not configured'
+    const secretKeyPlaceholder = secretKey ? '•••••••• (unchanged)' : 'Not configured'
     const debugEnabled = SettingsManager.isDebugEnabled() ? 'checked' : ''
     const rejectUnauthorized = SettingsManager.isRejectUnauthorized() ? 'checked' : ''
     const exportFormat = SettingsManager.getExportFormat()
@@ -811,15 +816,15 @@ export class SidebarView {
   <form onsubmit="save(event)">
     <div class="form-group">
       <label>Server URL</label>
-      <input type="text" id="msUrl" value="${msUrl}" placeholder="http://localhost:8080">
+      <input type="text" id="msUrl" value="${escapeHtml(msUrl)}" placeholder="http://localhost:8080">
     </div>
     <div class="form-group">
       <label>Access Key</label>
-      <input type="text" id="accessKey" value="${accessKey}">
+      <input type="text" id="accessKey" value="" placeholder="${accessKeyPlaceholder}">
     </div>
     <div class="form-group">
       <label>Secret Key</label>
-      <input type="password" id="secretKey" value="${secretKey}">
+      <input type="password" id="secretKey" value="" placeholder="${secretKeyPlaceholder}">
     </div>
     <div class="checkbox-label">
       <input type="checkbox" id="debugEnabled" ${debugEnabled}>
@@ -841,17 +846,21 @@ export class SidebarView {
   </form>
   <script>
     const vscode = acquireVsCodeApi();
+    ${escapeHtmlJs}
     document.getElementById('settingsTestBtn').addEventListener('click', function() { vscode.postMessage({ command: 'testConnection' }); });
     function save(event) {
       event.preventDefault();
-      vscode.postMessage({ command: 'saveSettings', data: {
+      var data = {
         msUrl: document.getElementById('msUrl').value,
-        accessKey: document.getElementById('accessKey').value,
-        secretKey: document.getElementById('secretKey').value,
         debugEnabled: document.getElementById('debugEnabled').checked,
         exportFormat: document.getElementById('exportFormatSelect').value,
         rejectUnauthorized: document.getElementById('rejectUnauthorizedChk').checked
-      }});
+      };
+      var accessKey = document.getElementById('accessKey').value;
+      var secretKey = document.getElementById('secretKey').value;
+      if (accessKey) data.accessKey = accessKey;
+      if (secretKey) data.secretKey = secretKey;
+      vscode.postMessage({ command: 'saveSettings', data: data });
     }
     function testConnection() {
       vscode.postMessage({ command: 'testConnection' });
@@ -862,10 +871,11 @@ export class SidebarView {
   }
 
   static getControlPanelHtml(): string {
-    const escapeAttr = (s: string): string => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    const msUrl = escapeAttr(SettingsManager.getMsUrl() ?? '')
-    const accessKey = escapeAttr(SettingsManager.getAccessKey() ?? '')
-    const secretKey = escapeAttr(SettingsManager.getSecretKey() ?? '')
+    const msUrl = SettingsManager.getMsUrl() ?? ''
+    const accessKey = SettingsManager.getAccessKey() ?? ''
+    const secretKey = SettingsManager.getSecretKey() ?? ''
+    const accessKeyPlaceholder = accessKey ? '•••••••• (unchanged)' : 'Not configured'
+    const secretKeyPlaceholder = secretKey ? '•••••••• (unchanged)' : 'Not configured'
     const debugEnabled = SettingsManager.isDebugEnabled() ? 'checked' : ''
 
     return `<!DOCTYPE html>
@@ -1062,15 +1072,15 @@ ${SidebarView.getThemeStyles()}
   <form id="settingsForm">
     <div class="form-group">
       <label>Server URL</label>
-      <input type="text" id="msUrl" value="${msUrl}" placeholder="http://localhost:8080">
+      <input type="text" id="msUrl" value="${escapeHtml(msUrl)}" placeholder="http://localhost:8080">
     </div>
     <div class="form-group">
       <label>Access Key</label>
-      <input type="text" id="accessKey" value="${accessKey}">
+      <input type="text" id="accessKey" value="" placeholder="${accessKeyPlaceholder}">
     </div>
     <div class="form-group">
       <label>Secret Key</label>
-      <input type="password" id="secretKey" value="${secretKey}">
+      <input type="password" id="secretKey" value="" placeholder="${secretKeyPlaceholder}">
     </div>
     <div class="checkbox-label">
       <input type="checkbox" id="debugEnabled" ${debugEnabled}>
@@ -1104,6 +1114,7 @@ ${SidebarView.getThemeStyles()}
 
 <script>
 const vscode = acquireVsCodeApi();
+${escapeHtmlJs}
 vscode.postMessage({ command: 'webviewReady' });
 function reportWebviewError(payload) {
   vscode.postMessage({ command: 'webviewError', data: payload });
@@ -1198,7 +1209,7 @@ function setUploadEnabled(enabled) {
 }
 
 function showStatus(message, type) {
-  document.getElementById('status').innerHTML = '<div class="status ' + type + '">' + message + '</div>';
+  document.getElementById('status').innerHTML = '<div class="status ' + type + '">' + escapeHtml(message) + '</div>';
 }
 
 function refreshEnvs() {
@@ -1229,12 +1240,15 @@ function upload() {
 
 function save(event) {
   event.preventDefault();
-  vscode.postMessage({ command: 'saveSettings', data: {
+  var data = {
     msUrl: document.getElementById('msUrl').value,
-    accessKey: document.getElementById('accessKey').value,
-    secretKey: document.getElementById('secretKey').value,
     debugEnabled: document.getElementById('debugEnabled').checked
-  }});
+  };
+  var accessKey = document.getElementById('accessKey').value;
+  var secretKey = document.getElementById('secretKey').value;
+  if (accessKey) data.accessKey = accessKey;
+  if (secretKey) data.secretKey = secretKey;
+  vscode.postMessage({ command: 'saveSettings', data: data });
 }
 
 function openInDebugger(method, url) {
@@ -1254,7 +1268,7 @@ window.addEventListener('message', function(event) {
     var fileList = document.getElementById('fileList');
     fileList.innerHTML = selectedFiles.length === 0
       ? '<div style="font-style:italic">No files selected</div>'
-      : selectedFiles.map(function(f) { return '<div class="file-list-item">' + String(f).split('/').pop().split('\\\\').pop() + '</div>'; }).join('');
+      : selectedFiles.map(function(f) { return '<div class="file-list-item">' + escapeHtml(String(f).split('/').pop().split('\\\\').pop()) + '</div>'; }).join('');
     showStatus(selectedFiles.length === 0 ? 'No files selected' : 'Selected ' + selectedFiles.length + ' Java file(s)', 'success');
     if (selectedFiles.length > 0) uploadEnabled = true;
     setUploadEnabled(uploadEnabled);
@@ -1285,7 +1299,7 @@ window.addEventListener('message', function(event) {
       showStatus('Found ' + selectedFiles.length + ' Java files', 'success');
       document.getElementById('fileList').innerHTML = selectedFiles.length === 0
         ? '<div style="font-style:italic">No files selected</div>'
-        : selectedFiles.map(function(f) { return '<div class="file-list-item">' + String(f).split('/').pop().split('\\\\').pop() + '</div>'; }).join('');
+        : selectedFiles.map(function(f) { return '<div class="file-list-item">' + escapeHtml(String(f).split('/').pop().split('\\\\').pop()) + '</div>'; }).join('');
       uploadEnabled = selectedFiles.length > 0;
     }
     setUploadEnabled(uploadEnabled);
@@ -1293,7 +1307,7 @@ window.addEventListener('message', function(event) {
     document.getElementById('currentProject').textContent = msg.name;
     var select = document.getElementById('moduleSelect');
     select.innerHTML = '<option value="">Select module...</option>' +
-      (msg.data?.modules || []).map(function(m) { return '<option value="' + m.id + '">' + m.name + '</option>'; }).join('');
+      (msg.data?.modules || []).map(function(m) { return '<option value="' + escapeHtml(m.id) + '">' + escapeHtml(m.name) + '</option>'; }).join('');
   } else if (msg.command === 'loadProjectError') {
     document.getElementById('currentProject').textContent = 'Error';
     showStatus(msg.data?.message || 'Failed to load project data', 'error');
@@ -1319,7 +1333,7 @@ window.addEventListener('message', function(event) {
         var details = '';
         if (e.config) {
           var c = e.config;
-          details += '<div class="env-detail"><strong>Config:</strong> ' + (c.protocol || 'HTTP') + '://' + (c.host || '-') + ':' + (c.port || '') + '</div>';
+          details += '<div class="env-detail"><strong>Config:</strong> ' + escapeHtml(c.protocol || 'HTTP') + '://' + escapeHtml(c.host || '-') + ':' + escapeHtml(c.port || '') + '</div>';
         }
         if (e.variables) {
           try {
@@ -1329,13 +1343,13 @@ window.addEventListener('message', function(event) {
           } catch(e) {}
         }
         if (e.description) {
-          details += '<div class="env-detail">' + e.description + '</div>';
+          details += '<div class="env-detail">' + escapeHtml(e.description) + '</div>';
         }
-        return '<div class="env-card"><div class="env-name">' + (e.name || 'Unnamed') + '</div>' + details + '</div>';
+        return '<div class="env-card"><div class="env-name">' + escapeHtml(e.name || 'Unnamed') + '</div>' + details + '</div>';
       }).join('');
     }
   } else if (msg.command === 'environmentsError') {
-    document.getElementById('envContent').innerHTML = '<p class="empty" style="color:var(--vscode-errorForeground)">' + (msg.data?.message || 'Failed to load') + '</p>';
+    document.getElementById('envContent').innerHTML = '<p class="empty" style="color:var(--vscode-errorForeground)">' + escapeHtml(msg.data?.message || 'Failed to load') + '</p>';
   } else if (msg.command === 'historyLoaded') {
     var history = msg.data?.history || [];
     var container = document.getElementById('historyContent');
@@ -1345,16 +1359,16 @@ window.addEventListener('message', function(event) {
       container.innerHTML = history.map(function(item) {
         var method = (item.method || 'GET').toUpperCase();
         var statusClass = item.success ? 'status-success' : 'status-fail';
-        return '<div class="history-item" data-method="' + method + '" data-url="' + (item.url || '').replace(/"/g, '&quot;') + '">' +
-          '<span class="history-method ' + methodClass(item.method) + '">' + method + '</span>' +
-          '<span class="history-url" title="' + (item.url || '').replace(/"/g, '&quot;') + '">' + (item.url || '') + '</span>' +
-          '<span class="history-status ' + statusClass + '">' + (item.status || '-') + '</span>' +
+        return '<div class="history-item" data-method="' + escapeHtml(method) + '" data-url="' + escapeHtml(item.url || '') + '">' +
+          '<span class="history-method ' + methodClass(item.method) + '">' + escapeHtml(method) + '</span>' +
+          '<span class="history-url" title="' + escapeHtml(item.url || '') + '">' + escapeHtml(item.url || '') + '</span>' +
+          '<span class="history-status ' + statusClass + '">' + escapeHtml(item.status || '-') + '</span>' +
           '<span class="history-time">' + timeAgo(item.timestamp) + '</span>' +
           '</div>';
       }).join('');
     }
   } else if (msg.command === 'historyError') {
-    document.getElementById('historyContent').innerHTML = '<p class="empty" style="color:var(--vscode-errorForeground)">' + (msg.data?.message || 'Failed to load history') + '</p>';
+    document.getElementById('historyContent').innerHTML = '<p class="empty" style="color:var(--vscode-errorForeground)">' + escapeHtml(msg.data?.message || 'Failed to load history') + '</p>';
   }
 });
 </script>
@@ -1456,6 +1470,7 @@ window.addEventListener('message', function(event) {
   <button class="btn-primary uploadBtn" id="uploadBtn">Upload to MeterSphere</button>
   <script>
     const vscode = acquireVsCodeApi();
+    ${escapeHtmlJs}
     let selectedFiles = [];
     let isScanning = false;
     let uploadEnabled = false;
@@ -1487,7 +1502,7 @@ window.addEventListener('message', function(event) {
         const fileList = document.getElementById('fileList');
         fileList.innerHTML = selectedFiles.length === 0 
           ? '<div style="font-style:italic">No files selected</div>'
-          : selectedFiles.map(f => '<div class="file-list-item">' + f.split('/').pop() + '</div>').join('');
+          : selectedFiles.map(f => '<div class="file-list-item">' + escapeHtml(f.split('/').pop()) + '</div>').join('');
         if (selectedFiles.length > 0) uploadEnabled = true;
         setUploadEnabled(uploadEnabled);
       } else if (data.command === 'scanningStarted') {
@@ -1512,7 +1527,7 @@ window.addEventListener('message', function(event) {
           const fileList = document.getElementById('fileList');
           fileList.innerHTML = selectedFiles.length === 0 
             ? '<div style="font-style:italic">No files selected</div>'
-            : selectedFiles.map(f => '<div class="file-list-item">' + f.split('/').pop() + '</div>').join('');
+            : selectedFiles.map(f => '<div class="file-list-item">' + escapeHtml(f.split('/').pop()) + '</div>').join('');
           uploadEnabled = selectedFiles.length > 0;
         }
         setUploadEnabled(uploadEnabled);
@@ -1520,7 +1535,7 @@ window.addEventListener('message', function(event) {
         document.getElementById('currentProject').textContent = data.name;
         const select = document.getElementById('moduleSelect');
         select.innerHTML = '<option value="">Select module...</option>' +
-          (data.data?.modules || []).map(m => '<option value="' + m.id + '">' + m.name + '</option>').join('');
+          (data.data?.modules || []).map(m => '<option value="' + escapeHtml(m.id) + '">' + escapeHtml(m.name) + '</option>').join('');
       } else if (data.command === 'loadProjectError') {
         document.getElementById('currentProject').textContent = 'Error';
         showStatus(data.data?.message || 'Failed to load project data', 'error');
@@ -1539,7 +1554,7 @@ window.addEventListener('message', function(event) {
       }
     });
     function showStatus(message, type) {
-      document.getElementById('status').innerHTML = '<div class="status ' + type + '">' + message + '</div>';
+      document.getElementById('status').innerHTML = '<div class="status ' + type + '">' + escapeHtml(message) + '</div>';
     }
     function upload() {
       if (!uploadEnabled) return;
