@@ -624,6 +624,61 @@ public class TestController {
       expect(param!.required).toBe(false);
     },
   },
+  {
+    name: 'basePath > method-level @RequestMapping must not become the basePath (no class-level mapping)',
+    source: `
+@RestController
+public class DetailController {
+  @RequestMapping(value = "/detail", method = RequestMethod.GET)
+  public String getDetail() { return null; }
+}
+`,
+    assert: (result) => {
+      expect(result.classes[0].basePath).toBe('');
+      expect(result.apis).toHaveLength(1);
+      expect(result.apis[0].fullPath).toBe('/detail');
+      expect(result.apis[0].method).toBe('GET');
+    },
+  },
+  {
+    name: 'basePath > class-level @RequestMapping still prefixes method paths',
+    source: `
+@RestController
+@RequestMapping("/api")
+public class UserController {
+  @GetMapping("/users")
+  public List<User> getUsers() { return null; }
+}
+`,
+    assert: (result) => {
+      expect(result.classes[0].basePath).toBe('/api');
+      expect(result.apis[0].fullPath).toBe('/api/users');
+    },
+  },
+  {
+    name: '@RequestBody binding > a mention inside another method body must not bind a body param',
+    source: `
+@RestController
+public class MixedController {
+  @GetMapping("/a")
+  public String getA() {
+    // see also: @RequestBody handling elsewhere
+    return "no body here";
+  }
+
+  @PostMapping("/b")
+  public String createB(@RequestBody String payload) { return payload; }
+}
+`,
+    assert: (result) => {
+      const apiA = result.apis.find(a => a.path === '/a');
+      const apiB = result.apis.find(a => a.path === '/b');
+      expect(apiA).toBeDefined();
+      expect(apiB).toBeDefined();
+      expect(apiA!.parameters.find(p => p.in === 'body')).toBeUndefined();
+      expect(apiB!.parameters.find(p => p.in === 'body')).toBeDefined();
+    },
+  },
 ];
 
 describe.each<[ParseEngine]>([['cst'], ['regex']])('JavaParser [%s]', (engine) => {
