@@ -1,0 +1,12 @@
+{
+  "placement": { "enabled": "yes", "managedPrefix": 42 },
+  "rules": [
+    { "matchOn": "className", "pattern": "GoodController", "branch": "eapi" },
+    { "matchOn": "notARealMatchOn", "pattern": "x", "branch": "iapi" },
+    { "matchOn": "pathRegex", "pattern": 123, "branch": "both" },
+    { "matchOn": "pathRegex", "pattern": "([unclosed", "branch": "eapi" },
+    "not-an-object",
+    { "matchOn": "annotationTag", "pattern": "legacy", "branch": "sideways" },
+    { "matchOn": "catchAll", "pattern": "", "branch": "iapi" }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "placement": { "enabled": false },
+  "rules": [
+    { "matchOn": "className", "pattern": "PlainController", "branch": "eapi" }
+  ]
+}

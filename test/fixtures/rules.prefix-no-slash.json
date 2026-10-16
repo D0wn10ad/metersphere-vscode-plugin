@@ -1,0 +1,4 @@
+{
+  "placement": { "enabled": true, "managedPrefix": "gateway" },
+  "rules": []
+}

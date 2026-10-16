@@ -104,6 +104,11 @@
           "type": "boolean",
           "default": true,
           "description": "Reject self-signed HTTPS certificates (set to false for development servers)"
+        },
+        "metersphere.rulesPath": {
+          "type": "string",
+          "default": ".metersphere/rules.json",
+          "description": "Workspace-relative path to the runtime rules JSON file used for sync branch/placement routing"
         }
       }
     },

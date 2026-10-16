@@ -1,0 +1,8 @@
+{
+  "placement": { "enabled": true, "managedPrefix": "/managed" },
+  "rules": [
+    { "matchOn": "catchAll", "pattern": "", "branch": "iapi" },
+    { "matchOn": "className", "pattern": "AlphaController", "branch": "eapi" },
+    { "matchOn": "pathRegex", "pattern": "^/webhook/", "branch": "both" }
+  ]
+}
