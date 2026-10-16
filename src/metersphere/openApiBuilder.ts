@@ -12,7 +12,6 @@
 import { ParseResult, ParsedApi, ParsedParameter } from './javaParser'
 import { DebugLogger } from './debugLogger'
 import { TypeResolver } from './typeResolver'
-import { SchemaGenerator } from './schemaGenerator'
 import { ProjectSymbolIndex, ResolvedDto } from './javaAst/projectSymbolIndex'
 import { applyValidation } from './validationSchema'
 
