@@ -1,19 +1,44 @@
-.vscodeignore
+# Repo / dev scaffolding — never loaded at runtime
+.gitignore
+.gitattributes
+**/.gitignore
+**/.gitattributes
+**/mvnw
+**/mvnw.cmd
+**/*Zone.Identifier
 .vscode-test.*
 src
 test
-.git
 docs
-node_modules/vscode
-*.ts
-*.map
+scripts
+api-definition
 .github
 .worktrees
 .opencode
+.omo
 .codegraph
 tsconfig.json
 jest.config.js
 .eslintrc.js
 .prettierrc
 AGENTS.md
-*.test.ts
+*.vsix
+
+# Sources and source maps — the extension runs from out/** (compiled JS)
+*.ts
+**/*.ts
+*.map
+**/*.map
+
+# node_modules: ship ONLY the form-data runtime chain.
+# out/src/metersphere/views/sidebarView.js does `require("form-data")` at
+# runtime, so form-data + its transitive deps (asynckit, combined-stream,
+# delayed-stream, es-*, call-bind*, function-bind, get-*, gopd, has-*,
+# math-intrinsics, mime-*) must stay. java-parser is NOT needed from
+# node_modules: loadJavaParser.ts loads the vendored CommonJS bundle at
+# vendor/java-parser.cjs (java-parser@3 is ESM-only and cannot be require()d).
+node_modules/java-parser
+node_modules/chevrotain
+node_modules/chevrotain-allstar
+node_modules/@chevrotain
+node_modules/lodash-es
