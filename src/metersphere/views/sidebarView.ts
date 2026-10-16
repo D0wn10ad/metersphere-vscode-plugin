@@ -66,8 +66,24 @@ export class SidebarView {
 
     try {
       const headers = SettingsManager.buildAuthHeaders('application/json')
-      const workspaceId = SettingsManager.getWorkspaceId()
+      let workspaceId = SettingsManager.getWorkspaceId()
       const projectId = SettingsManager.getProjectId()
+
+      // Auto-discover and persist the first workspace when none is saved (main-branch behavior).
+      if (!workspaceId) {
+        const workspacesResp = await httpRequest(
+          'GET',
+          `${msUrl}/api/workspace/list/userworkspace`,
+          headers
+        )
+        if (workspacesResp.status >= 200 && workspacesResp.status < 300) {
+          const workspaces = workspacesResp.body?.data || []
+          if (workspaces.length > 0) {
+            workspaceId = String(workspaces[0].id)
+            SettingsManager.setWorkspaceId(workspaceId)
+          }
+        }
+      }
 
       if (!workspaceId) {
         DebugLogger.error('Sync', 'No workspace selected', {})
@@ -80,11 +96,14 @@ export class SidebarView {
         projectId: projectId ?? 'none'
       })
 
+      const projectBody: Record<string, unknown> = { workspaceIds: [workspaceId] }
+      const currentUserId = SettingsManager.getCurrentUserId()
+      if (currentUserId) projectBody.userId = currentUserId
       const projectsResp = await httpRequest(
         'POST',
         `${msUrl}/api/project/list/related`,
         headers,
-        { workspaceIds: [workspaceId] }
+        projectBody
       )
       if (projectsResp.status < 200 || projectsResp.status >= 300) {
         DebugLogger.error('Sync', 'Failed to load projects', { status: projectsResp.status, url: `${msUrl}/api/project/list/related` })
@@ -109,6 +128,9 @@ export class SidebarView {
       if (savedProjectId) {
         const found = projects.find((p: any) => p.id === savedProjectId)
         if (found) targetProject = found
+      }
+      if (!savedProjectId && targetProject) {
+        SettingsManager.setProjectId(targetProject.id)
       }
 
       const modulesResp = await httpRequest(

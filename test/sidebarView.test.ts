@@ -209,19 +209,6 @@ describe('sidebarView', () => {
       });
       expect(httpRequest).not.toHaveBeenCalled();
     });
-
-    it('failure: no workspace selected -> logs and posts loadProjectError without any request', async () => {
-      setSetting('metersphere.workspaceId', '');
-
-      await SidebarView.loadProjectModules();
-
-      expect(errorSpy).toHaveBeenCalledWith('Sync', 'No workspace selected', {});
-      expect(postSpy).toHaveBeenCalledWith({
-        command: 'loadProjectError',
-        data: { message: 'No workspace selected. Use Navigator to select a workspace.' },
-      });
-      expect(httpRequest).not.toHaveBeenCalled();
-    });
   });
 
   describe('webviewReady handshake (state replay + delivery logging)', () => {
@@ -295,4 +282,79 @@ describe('sidebarView', () => {
       expect(html).toContain("'Selected ' + selectedFiles.length + ' Java file(s)'");
     });
   });
+
+describe('SidebarView.loadProjectModules (auto-discovery, ported from main)', () => {
+  const vscode = require('vscode');
+  const { SettingsManager } = require('../src/metersphere/settingsManager');
+
+  function setSetting(key: string, value: string): void {
+    vscode.workspace.getConfiguration().update(key, value);
+  }
+
+  let postSpy: jest.SpyInstance;
+  beforeEach(() => {
+    postSpy = jest.spyOn(SidebarView, 'postMessage').mockImplementation(() => {});
+    setSetting('metersphere.msUrl', 'http://localhost:8081');
+    setSetting('metersphere.accessKey', 'ak-test-12345678');
+    setSetting('metersphere.secretKey', 'sk-test-12345678');
+    setSetting('metersphere.currentUserId', 'user-1');
+    setSetting('metersphere.projectId', '');
+    setSetting('metersphere.workspaceId', '');
+  });
+
+  afterEach(() => {
+    postSpy.mockRestore();
+    jest.clearAllMocks();
+  });
+
+  it('auto-discovers and persists the first workspace and project when none are saved', async () => {
+    (httpRequest as jest.Mock)
+      .mockResolvedValueOnce({ status: 200, body: { data: [{ id: 'ws-1', name: 'Workspace One' }] } })
+      .mockResolvedValueOnce({ status: 200, body: { success: true, data: [{ id: 'proj-1', name: 'Project One' }] } })
+      .mockResolvedValueOnce({ status: 200, body: { data: [{ id: 'mod-1', name: 'Module One' }] } });
+
+    await SidebarView.loadProjectModules();
+
+    expect(vscode.workspace.getConfiguration().get('metersphere.workspaceId')).toBe('ws-1');
+    expect(vscode.workspace.getConfiguration().get('metersphere.projectId')).toBe('proj-1');
+    expect(httpRequest).toHaveBeenCalledTimes(3);
+    expect(httpRequest).toHaveBeenNthCalledWith(1, 'GET', 'http://localhost:8081/api/workspace/list/userworkspace', expect.any(Object));
+    expect(httpRequest).toHaveBeenNthCalledWith(
+      2,
+      'POST',
+      'http://localhost:8081/api/project/list/related',
+      expect.any(Object),
+      { workspaceIds: ['ws-1'], userId: 'user-1' }
+    );
+    expect(httpRequest).toHaveBeenNthCalledWith(3, 'GET', 'http://localhost:8081/api/api/module/list/proj-1/HTTP', expect.any(Object));
+    expect(postSpy).toHaveBeenCalledWith(expect.objectContaining({ command: 'projectLoaded' }));
+  });
+
+  it('keeps the saved project when it exists in the returned project list', async () => {
+    setSetting('metersphere.workspaceId', 'ws-1');
+    setSetting('metersphere.projectId', 'proj-2');
+    (httpRequest as jest.Mock)
+      .mockResolvedValueOnce({ status: 200, body: { success: true, data: [{ id: 'proj-1', name: 'P1' }, { id: 'proj-2', name: 'P2' }] } })
+      .mockResolvedValueOnce({ status: 200, body: { data: [{ id: 'mod-2', name: 'Module Two' }] } });
+
+    await SidebarView.loadProjectModules();
+
+    expect(httpRequest).toHaveBeenCalledTimes(2);
+    expect(httpRequest).toHaveBeenNthCalledWith(2, 'GET', 'http://localhost:8081/api/api/module/list/proj-2/HTTP', expect.any(Object));
+    expect(vscode.workspace.getConfiguration().get('metersphere.projectId')).toBe('proj-2');
+    expect(postSpy).toHaveBeenCalledWith(expect.objectContaining({ command: 'projectLoaded' }));
+  });
+
+  it('posts an error when no workspace can be resolved', async () => {
+    (httpRequest as jest.Mock).mockResolvedValueOnce({ status: 200, body: { data: [] } });
+
+    await SidebarView.loadProjectModules();
+
+    expect(httpRequest).toHaveBeenCalledTimes(1);
+    expect(postSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ command: 'loadProjectError', data: expect.objectContaining({ message: expect.stringContaining('No workspace selected') }) })
+    );
+  });
+});
+
 });

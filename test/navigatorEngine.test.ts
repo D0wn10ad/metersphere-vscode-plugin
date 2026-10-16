@@ -1,3 +1,13 @@
+jest.mock('../src/metersphere/settingsManager', () => ({
+  SettingsManager: {
+    getAccessKey: jest.fn(() => 'ak'),
+    getSecretKey: jest.fn(() => 'sk'),
+    generateSignature: jest.fn(() => 'mock-signature'),
+    getMsUrl: jest.fn(() => 'http://ms.example.com'),
+    getCurrentUserId: jest.fn(),
+  },
+}))
+
 import { NavigatorEngine } from '../src/metersphere/navigatorEngine'
 import { NodeType } from '../src/metersphere/models/navigatorNode'
 
@@ -28,6 +38,7 @@ describe('NavigatorEngine', () => {
 
   beforeEach(() => {
     NavigatorEngine.clearCache()
+    NavigatorEngine.setStateStorage(null as any)
   })
 
   afterEach(() => {
@@ -48,6 +59,49 @@ describe('NavigatorEngine', () => {
     expect(tree.length).toBe(1)
     expect(tree[0].type).toBe(NodeType.PROJECT)
     expect(tree[0].children.length).toBe(0)
+  })
+
+  test('discoverProjects includes userId when available', async () => {
+    const { SettingsManager } = require('../src/metersphere/settingsManager')
+    ;(SettingsManager.getCurrentUserId as jest.Mock).mockReturnValue('user-1')
+
+    const fetchFn = jest.fn().mockResolvedValue({
+      status: 200,
+      body: { data: [{ id: 'proj-1', name: 'Test Project', workspaceId: 'ws-1' }] },
+    })
+
+    const nodes = await NavigatorEngine.discoverProjects('ws-1', fetchFn)
+
+    expect(nodes.map(node => node.id)).toEqual(['proj-1'])
+    expect(fetchFn).toHaveBeenCalledWith(
+      'POST',
+      'http://ms.example.com/api/project/list/related',
+      expect.objectContaining({
+        accessKey: 'ak',
+        signature: 'mock-signature',
+        'Content-Type': 'application/json',
+      }),
+      { workspaceIds: ['ws-1'], userId: 'user-1' }
+    )
+  })
+
+  test('discoverProjects omits userId when unavailable', async () => {
+    const { SettingsManager } = require('../src/metersphere/settingsManager')
+    ;(SettingsManager.getCurrentUserId as jest.Mock).mockReturnValue(undefined)
+
+    const fetchFn = jest.fn().mockResolvedValue({
+      status: 200,
+      body: { data: [{ id: 'proj-2', name: 'Test Project 2', workspaceId: 'ws-2' }] },
+    })
+
+    await NavigatorEngine.discoverProjects('ws-2', fetchFn)
+
+    expect(fetchFn).toHaveBeenCalledWith(
+      'POST',
+      'http://ms.example.com/api/project/list/related',
+      expect.any(Object),
+      { workspaceIds: ['ws-2'] }
+    )
   })
 
   test('cache is used on second call', async () => {

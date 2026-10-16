@@ -176,7 +176,9 @@ export class NavigatorEngine {
   ): Promise<NavigatorNode[]> {
     return NavigatorEngine.getCached(`projects_${workspaceId}`, async () => {
       const baseUrl = NavigatorEngine.getBaseUrl()
-      const body = { workspaceIds: [workspaceId] }
+      const body: Record<string, unknown> = { workspaceIds: [workspaceId] }
+      const userId = SettingsManager.getCurrentUserId()
+      if (userId) body.userId = userId
       const headers = NavigatorEngine.buildAuthHeaders('application/json')
       const url = `${baseUrl}/api/project/list/related`
       

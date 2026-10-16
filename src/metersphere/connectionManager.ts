@@ -76,6 +76,11 @@ export class ConnectionManager {
         DebugLogger.log('Connection', 'currentUser response', { status: resp.status, body: resp.body })
         if (resp.status === 200) {
           this.currentUrl = msUrl
+          const body = resp.body as any
+          const userId = body?.data?.id
+          if (userId) {
+            SettingsManager.setCurrentUserId(userId)
+          }
           this.update(ConnectionState.Connected, msUrl)
           return { success: true, url: msUrl }
         } else {

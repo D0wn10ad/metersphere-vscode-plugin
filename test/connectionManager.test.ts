@@ -56,6 +56,7 @@ jest.mock('../src/metersphere/settingsManager', () => ({
     getAccessKey: jest.fn(),
     getSecretKey: jest.fn(),
     generateSignature: jest.fn(() => 'mock-signature'),
+    setCurrentUserId: jest.fn(),
   },
 }))
 
@@ -112,6 +113,40 @@ describe('ConnectionManager', () => {
       const result = await cm.testConnection()
       expect(result.success).toBe(true)
       expect(result.url).toBe('http://ms.example.com')
+    })
+
+    it('persists currentUserId when /currentUser returns a user id', async () => {
+      const { httpRequest } = require('../src/metersphere/httpClient')
+      ;(httpRequest as jest.Mock).mockResolvedValueOnce({
+        status: 200,
+        body: { data: { id: 'user-123' } },
+      })
+      const { SettingsManager } = require('../src/metersphere/settingsManager')
+      ;(SettingsManager.getMsUrl as jest.Mock).mockReturnValueOnce('http://ms.example.com')
+      ;(SettingsManager.getAccessKey as jest.Mock).mockReturnValueOnce('ak')
+      ;(SettingsManager.getSecretKey as jest.Mock).mockReturnValueOnce('sk')
+
+      const result = await cm.testConnection()
+
+      expect(result.success).toBe(true)
+      expect(SettingsManager.setCurrentUserId).toHaveBeenCalledWith('user-123')
+    })
+
+    it('does not persist currentUserId when /currentUser returns no user id', async () => {
+      const { httpRequest } = require('../src/metersphere/httpClient')
+      ;(httpRequest as jest.Mock).mockResolvedValueOnce({
+        status: 200,
+        body: { data: {} },
+      })
+      const { SettingsManager } = require('../src/metersphere/settingsManager')
+      ;(SettingsManager.getMsUrl as jest.Mock).mockReturnValueOnce('http://ms.example.com')
+      ;(SettingsManager.getAccessKey as jest.Mock).mockReturnValueOnce('ak')
+      ;(SettingsManager.getSecretKey as jest.Mock).mockReturnValueOnce('sk')
+
+      const result = await cm.testConnection()
+
+      expect(result.success).toBe(true)
+      expect(SettingsManager.setCurrentUserId).not.toHaveBeenCalled()
     })
 
     it('returns error when /currentUser returns 401', async () => {
