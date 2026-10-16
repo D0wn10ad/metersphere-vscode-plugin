@@ -142,6 +142,11 @@ src/
     uploadPlatform.ts        # Server platform mapping (OpenAPI ships as "Swagger2")
     variableResolver.ts      # {{var}} environment variable resolution
     escapeHtml.ts            # Webview HTML/JS escaping helpers
+    contextPathResolver.ts   # Context-path detection from application.* (prefill only)
+    serviceRootPathResolver.ts # Webflux-first service root path detection
+    rulesLoader.ts           # Runtime rules JSON loading (branch/placement routing)
+    categoryResolver.ts      # eapi/iapi/both branch resolution chain
+    versionProbe.ts          # Server version probe (v2/v3 payload shape)
     contextHolder.ts         # Global extension context holder
     debugLogger.ts           # Debug logging to Output panel
     javaAst/                 # CST parser stack (java-parser / Chevrotain based)
@@ -221,7 +226,8 @@ After design and planning, choose one:
 | Sidebar Migration | ✅ Complete | 4 separate webviews merged into single Control Panel; tab-bar replaced with accordion panels |
 | API Endpoints in Navigator | ✅ Complete | API definitions shown under modules in tree |
 | Debugger Polish & Sidebar Integration | ✅ Complete | VSCode theme CSS variables in debugger; inline History removed (sidebar-only); onclick→addEventListener cleanup; message queuing; upload duplication guard |
-| Header/Naming Fixes | ✅ Complete | @RequestHeader propagation, API naming precedence (Operation > Javadoc > path), AST parser parity |
+| Header/Naming Fixes | ✅ Complete | @RequestHeader propagation, API naming precedence (Operation > Javadoc > path) |
+| Sync Name/Path/Branch Routing | ✅ Complete | Order-independent annotation lookup; context path in both formats; runtime rules JSON; @category-preferred eapi/iapi/both routing with dual upload; version probe + post-import verification; v3 experimental/untested |
 | OpenAPI Schema Resolution | ✅ Complete | Tiers 1–2 (java-ast type extraction + $ref) plus Tiers 3–4 (async DTO pre-pass via LSP symbol provider / bounded disk scan, graceful degradation without redhat.java) |
 | Gap Analysis (IDEA vs VSCode) | ✅ Complete | `docs/superpowers/gap-analysis-vscode-vs-idea.md` documents all P0–P2 gaps |
 | OCR Security & Robustness Hardening | ✅ Complete | 52 review findings fixed across 14 themes (XSS escaping, timeouts, parser correctness, lifecycle guards, packaging); live-verified against v2.10.26-lts; 35 suites / 535 tests |

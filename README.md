@@ -80,6 +80,11 @@ code --install-extension path/to/generated.vsix  # or symlink out/ to your exten
 | `metersphere.workspaceId` | `""` | Workspace ID (auto-synced from Navigator) |
 | `metersphere.projectId` | `""` | Project ID (auto-synced from Navigator) |
 | `metersphere.debugEnabled` | `false` | Enable debug logging to Output panel |
+| `metersphere.exportFormat` | `swagger2` | Upload document format (`swagger2` = OpenAPI 3.0, `postman` = Postman collection) |
+| `metersphere.rejectUnauthorized` | `true` | Reject self-signed TLS certificates |
+| `metersphere.rulesPath` | `.metersphere/rules.json` | Workspace-relative path to the runtime rules JSON (branch/placement routing) |
+| `metersphere.defaultBranch` | `eapi` | Fallback branch when no override/rule/@category/tag matches (`eapi`/`iapi`/`none`) |
+| `metersphere.serverVersion` | `auto` | Server version for the upload payload (`auto` probes `/system/version/current`; `v3` is experimental/untested) |
 
 ## Commands
 
@@ -116,6 +121,25 @@ Right-click a `.java` file or folder in the File Explorer → **MeterSphere: Upl
 
 ### 4. Debug APIs
 Run `MeterSphere: Show Debugger` — select method, enter path and body, execute against your MeterSphere instance.
+
+## Branch Routing (eapi / iapi)
+
+Each synced API is routed into an `eapi` or `iapi` branch. The branch is expressed in the **URL shape only** — the module is always the one you pick in the Sync panel (no module-tree manipulation).
+
+**Resolution order (first match wins):**
+1. Manual **Branch** selector in the Sync panel (`auto` | `eapi` | `iapi` | `both` | `none`)
+2. Runtime rules from `metersphere.rulesPath` JSON — entries `{ "matchOn": "methodAndPathPrefix|pathRegex|className|javadocCategory|annotationTag|catchAll", "pattern": "...", "branch": "eapi|iapi|both" }`, first match wins, `catchAll` evaluated last
+3. Javadoc `@category eapi|iapi|both` (preferred marker; method-level overrides class-level)
+4. Annotation tags (`@Operation(tags = {"iapi"})`)
+5. `metersphere.defaultBranch` — or `both` when placement is enabled in the rules file
+
+**Dual upload:** when the effective branch is `both` (and placement is enabled), the plugin uploads TWO documents to the same module: the iapi copy's paths are prefixed with `placement.managedPrefix` (default `/managed`), the eapi copy stays plain — e.g. `/managed/<service-root-path>/<path>` and `/<service-root-path>/<path>`. The differing URLs satisfy MeterSphere's method+path dedup without URL_REPEATABLE.
+
+**Path precedence:** the manual Context Path field is authoritative; when empty, the service root path is auto-detected from `application.yml` (webflux-first `spring.application.webflux.base-path`, else `server.servlet.context-path`; profile-aware; `${ENV_VAR}` placeholders are never silently expanded).
+
+**Server versions:** `metersphere.serverVersion` `auto` probes `GET /system/version/current` (200 = v3, 404 = v2). **v3 is experimental/untested** — the plugin reports actual post-import outcomes instead of assuming duplicate rows.
+
+> Keep-in-view: a `java-ast` based parser rewrite lives on a separate branch and is not part of this extension yet.
 
 ## Sync Flow
 
@@ -163,7 +187,7 @@ Tests use a mock VSCode stack: `src/vscode.d.ts` and `test/vscode-mock-setup.js`
 | Sidebar Migration | ✅ Complete | 4 webviews → single Control Panel, accordion panels |
 | API Endpoints in Navigator | ✅ Complete | API definitions under modules |
 | Debugger Polish & Integration | ✅ Complete | VSCode theme CSS, message queuing, upload duplication guard |
-| Header/Naming Fixes | ✅ Complete | @RequestHeader propagation, API naming precedence (Operation > Javadoc > path), AST parser parity |
+| Header/Naming Fixes | ✅ Complete | @RequestHeader propagation, API naming precedence (Operation > Javadoc > path) |
 
 ## Recent Fixes
 
@@ -174,7 +198,6 @@ Tests use a mock VSCode stack: `src/vscode.d.ts` and `test/vscode-mock-setup.js`
 | Multipart + cookie params | `@RequestPart`/`MultipartFile` params export as `multipart/form-data` with per-part schemas; `@CookieValue` exports as `in: cookie`. |
 | API naming precedence | `@Operation(summary)` > first Javadoc line > API path. Removed `@ApiOperation` as a naming source. |
 | Header propagation | `@RequestHeader` names now export into Postman/MeterSphere request headers instead of being dropped. |
-| AST parser parity | `JavaParserAst` now parses `@RequestHeader` in per-method analysis, matching `JavaParser` behavior. |
 | Javadoc enrichment | `enhanceWithJavadoc` only fills summary when one is missing, preserving explicit `@Operation(summary)`. |
 | Tests | Updated to verify header extraction and naming precedence across parser paths and export logic. All pass. |
 
@@ -207,6 +230,11 @@ src/
     uploadPlatform.ts           # Server platform mapping (OpenAPI ships as "Swagger2")
     variableResolver.ts         # {{var}} environment variable resolution
     escapeHtml.ts               # Webview HTML/JS escaping helpers
+    contextPathResolver.ts      # Context-path detection from application.* (prefill only)
+    serviceRootPathResolver.ts  # Webflux-first service root path detection
+    rulesLoader.ts              # Runtime rules JSON loading (branch/placement routing)
+    categoryResolver.ts         # eapi/iapi/both branch resolution chain
+    versionProbe.ts             # Server version probe (v2/v3 payload shape)
     contextHolder.ts            # Global extension context holder
     debugLogger.ts              # Debug logging to Output panel
     authHeader.js               # Auth header generation
