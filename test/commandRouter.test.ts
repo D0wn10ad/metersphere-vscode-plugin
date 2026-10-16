@@ -1,9 +1,12 @@
 import { CommandRouter } from '../src/metersphere/commandRouter'
-import { ConnectionManager } from '../src/metersphere/connectionManager'
+import { ConnectionManager, ConnectionState } from '../src/metersphere/connectionManager'
 import { SidebarView } from '../src/metersphere/views/sidebarView'
 import { JavaFileScanner } from '../src/metersphere/javaFileScanner'
-import { NodeType } from '../src/metersphere/models/navigatorNode'
+import { NodeType, NavigatorNode } from '../src/metersphere/models/navigatorNode'
 import { NavigatorTreeDataProvider } from '../src/metersphere/navigatorTreeProvider'
+import { NavigatorEngine } from '../src/metersphere/navigatorEngine'
+import { SettingsManager } from '../src/metersphere/settingsManager'
+import { applyNavigatorSelection } from '../src/metersphere/extension'
 import type * as vscodeTypes from 'vscode'
 
 jest.mock('../src/metersphere/views/sidebarView', () => ({
@@ -69,6 +72,7 @@ describe('CommandRouter', () => {
     const mockConnectionManager = {
       update: () => {},
       testConnection: () => Promise.resolve({ success: true, url: 'http://localhost:8080' }),
+      getState: () => ConnectionState.Connected,
     } as unknown as ConnectionManager
 
     const vscode = require('vscode')
@@ -261,5 +265,203 @@ describe('CommandRouter scan handlers (single terminal scanComplete)', () => {
     const calls = scanCompleteCalls()
     expect(calls).toHaveLength(1)
     expect(calls[0]).toEqual({ command: 'scanComplete', data: { files: [], error: 'scan timed out' } })
+  })
+})
+
+describe('CommandRouter connection lifecycle (status settling + stale IDs)', () => {
+  const vscode = require('vscode')
+  const SETTINGS_KEYS = [
+    'metersphere.msUrl',
+    'metersphere.accessKey',
+    'metersphere.secretKey',
+    'metersphere.workspaceId',
+    'metersphere.projectId',
+  ]
+
+  let commands: Map<string, (...args: unknown[]) => unknown>
+  let registerSpy: jest.SpyInstance
+  let setRoots: jest.Mock
+
+  const trackedConnectionManager = (testConnection: jest.Mock) => {
+    let state: ConnectionState = ConnectionState.Unconfigured
+    const cm = {
+      update: (s: ConnectionState) => {
+        state = s
+      },
+      testConnection,
+      getState: () => state,
+    }
+    return { cm: cm as unknown as ConnectionManager, state: () => state }
+  }
+
+  const register = (cm: ConnectionManager): void => {
+    commands = new Map()
+    setRoots = jest.fn()
+    registerSpy = jest.spyOn(vscode.commands, 'registerCommand').mockImplementation((...args: unknown[]) => {
+      const [name, cb] = args as [string, (...commandArgs: unknown[]) => unknown]
+      commands.set(name, cb)
+      return { dispose: jest.fn() }
+    })
+    CommandRouter.registerAll({ subscriptions: { push: () => {} } } as any, {
+      navigatorProvider: { setRoots } as any,
+      httpRequest: () => Promise.resolve({ status: 200, body: { success: true, data: [] } }),
+      getActiveWebviewPanel: () => undefined,
+      connectionManager: cm,
+    } as any)
+  }
+
+  const queueInputBoxes = (): void => {
+    jest.spyOn(vscode.window, 'showInputBox')
+      .mockResolvedValueOnce('http://new-server:8080')
+      .mockResolvedValueOnce('new-ak')
+      .mockResolvedValueOnce('new-sk')
+  }
+
+  const seedSetting = (key: string, value: string | undefined): void => {
+    vscode.workspace.getConfiguration().update(key, value)
+  }
+
+  afterEach(() => {
+    ;(SidebarView.loadProjectModules as jest.Mock).mockReset().mockResolvedValue(undefined)
+    registerSpy?.mockRestore()
+    jest.restoreAllMocks()
+    for (const key of SETTINGS_KEYS) {
+      seedSetting(key, undefined)
+    }
+  })
+
+  test('configure: testConnection rejection settles Disconnected with surfaced error, resolves (no unhandled rejection)', async () => {
+    const { cm, state } = trackedConnectionManager(jest.fn().mockRejectedValue(new Error('network down')))
+    register(cm)
+    queueInputBoxes()
+    const errSpy = jest.spyOn(vscode.window, 'showErrorMessage').mockResolvedValue(undefined)
+
+    await expect(commands.get('metersphere.configure')?.()).resolves.toBeUndefined()
+
+    expect(state()).toBe(ConnectionState.Disconnected)
+    expect(errSpy).toHaveBeenCalledWith('Configure failed: network down')
+  })
+
+  test('configure: discoverWorkspaces throwing AFTER settings save → error surfaced + settled Disconnected, IDs already cleared', async () => {
+    const { cm, state } = trackedConnectionManager(
+      jest.fn().mockResolvedValue({ success: true, url: 'http://new-server:8080' })
+    )
+    register(cm)
+    queueInputBoxes()
+    jest.spyOn(vscode.window, 'showErrorMessage').mockResolvedValue(undefined)
+    jest.spyOn(vscode.window, 'showInformationMessage').mockResolvedValue(undefined)
+    jest.spyOn(NavigatorEngine, 'discoverWorkspaces').mockRejectedValue(new Error('discovery failed'))
+
+    seedSetting('metersphere.workspaceId', 'ws-old')
+    seedSetting('metersphere.projectId', 'proj-old')
+
+    await expect(commands.get('metersphere.configure')?.()).resolves.toBeUndefined()
+
+    expect(state()).toBe(ConnectionState.Disconnected)
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('Configure failed: discovery failed')
+    expect(SettingsManager.getMsUrl()).toBe('http://new-server:8080')
+    expect(SettingsManager.getWorkspaceId()).toBe('')
+    expect(SettingsManager.getProjectId()).toBe('')
+  })
+
+  test('configure: success clears stale workspace/project IDs from the previous server', async () => {
+    const { cm, state } = trackedConnectionManager(
+      jest.fn().mockResolvedValue({ success: true, url: 'http://new-server:8080' })
+    )
+    register(cm)
+    queueInputBoxes()
+    jest.spyOn(vscode.window, 'showInformationMessage').mockResolvedValue(undefined)
+    jest.spyOn(NavigatorEngine, 'discoverWorkspaces').mockResolvedValue([])
+
+    seedSetting('metersphere.workspaceId', 'ws-old')
+    seedSetting('metersphere.projectId', 'proj-old')
+    expect(SettingsManager.getWorkspaceId()).toBe('ws-old')
+
+    await expect(commands.get('metersphere.configure')?.()).resolves.toBeUndefined()
+
+    expect(state()).toBe(ConnectionState.Connected)
+    expect(SettingsManager.getWorkspaceId()).toBe('')
+    expect(SettingsManager.getProjectId()).toBe('')
+    expect(SettingsManager.getAccessKey()).toBe('new-ak')
+    expect(SettingsManager.getSecretKey()).toBe('new-sk')
+    expect(setRoots).toHaveBeenCalledWith([])
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith('MeterSphere configured successfully!')
+  })
+
+  test('testConnection: rejection settles Disconnected with surfaced error, never stuck on Connecting', async () => {
+    const { cm, state } = trackedConnectionManager(jest.fn().mockRejectedValue(new Error('socket hang up')))
+    register(cm)
+    jest.spyOn(vscode.window, 'showErrorMessage').mockResolvedValue(undefined)
+
+    await expect(commands.get('metersphere.testConnection')?.()).resolves.toBeUndefined()
+
+    expect(state()).toBe(ConnectionState.Disconnected)
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('Connection failed: socket hang up')
+  })
+
+  test('testConnection: success=false without internal update (Not configured) → finally flips Connecting to Disconnected', async () => {
+    const { cm, state } = trackedConnectionManager(
+      jest.fn().mockResolvedValue({ success: false, error: 'Not configured' })
+    )
+    register(cm)
+    jest.spyOn(vscode.window, 'showErrorMessage').mockResolvedValue(undefined)
+
+    await commands.get('metersphere.testConnection')?.()
+
+    expect(state()).toBe(ConnectionState.Disconnected)
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('Connection failed: Not configured')
+  })
+
+  test('testConnection: loadProjectModules rejection still settles Disconnected', async () => {
+    const { cm, state } = trackedConnectionManager(
+      jest.fn().mockResolvedValue({ success: true, url: 'http://host' })
+    )
+    register(cm)
+    jest.spyOn(vscode.window, 'showErrorMessage').mockResolvedValue(undefined)
+    ;(SidebarView.loadProjectModules as jest.Mock).mockRejectedValue(new Error('modules boom'))
+
+    await expect(commands.get('metersphere.testConnection')?.()).resolves.toBeUndefined()
+
+    expect(state()).toBe(ConnectionState.Disconnected)
+  })
+})
+
+describe('Navigator selection invariant (workspaceId/projectId)', () => {
+  const vscode = require('vscode')
+
+  const seed = (workspaceId?: string, projectId?: string): void => {
+    vscode.workspace.getConfiguration().update('metersphere.workspaceId', workspaceId)
+    vscode.workspace.getConfiguration().update('metersphere.projectId', projectId)
+  }
+
+  afterEach(() => seed(undefined, undefined))
+
+  test('workspace selection replaces workspaceId and clears the previous project', () => {
+    seed('ws-1', 'proj-1')
+    applyNavigatorSelection(new NavigatorNode({ id: 'ws-2', name: 'WS2', type: NodeType.WORKSPACE }))
+    expect(SettingsManager.getWorkspaceId()).toBe('ws-2')
+    expect(SettingsManager.getProjectId()).toBe('')
+  })
+
+  test('project selection under another workspace syncs workspaceId (projectId never orphaned)', () => {
+    seed('ws-1', '')
+    applyNavigatorSelection(
+      new NavigatorNode({ id: 'proj-9', name: 'P9', type: NodeType.PROJECT, parentId: 'ws-2' })
+    )
+    expect(SettingsManager.getWorkspaceId()).toBe('ws-2')
+    expect(SettingsManager.getProjectId()).toBe('proj-9')
+  })
+
+  test('project selection with no resolvable workspace drops projectId', () => {
+    seed(undefined, undefined)
+    applyNavigatorSelection(new NavigatorNode({ id: 'proj-9', name: 'P9', type: NodeType.PROJECT }))
+    expect(SettingsManager.getProjectId()).toBe('')
+  })
+
+  test('project selection with no parentId keeps an existing workspace pairing', () => {
+    seed('ws-1', undefined)
+    applyNavigatorSelection(new NavigatorNode({ id: 'proj-5', name: 'P5', type: NodeType.PROJECT }))
+    expect(SettingsManager.getWorkspaceId()).toBe('ws-1')
+    expect(SettingsManager.getProjectId()).toBe('proj-5')
   })
 })

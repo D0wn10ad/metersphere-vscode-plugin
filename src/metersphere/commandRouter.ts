@@ -90,48 +90,85 @@ export class CommandRouter {
 
         deps.connectionManager.update(ConnectionState.Connecting)
 
-        const result = await deps.connectionManager.testConnection(
-          url.trim(),
-          accessKey.trim(),
-          secretKey.trim()
-        )
+        // Outermost guard: no path may strand Connecting or reject unhandled.
+        try {
+          const result = await deps.connectionManager.testConnection(
+            url.trim(),
+            accessKey.trim(),
+            secretKey.trim()
+          )
 
-        if (!result.success) {
-          deps.connectionManager.update(ConnectionState.Disconnected)
+          if (!result.success) {
+            deps.connectionManager.update(ConnectionState.Disconnected)
+            try {
+              vscode.window.showErrorMessage(
+                'Connection failed: ' + (result.error ?? 'Unknown error')
+              )
+            } catch {
+              // notification can throw if VSCode is shutting down
+            }
+            return
+          }
+
+          SettingsManager.setMsUrl(url.trim())
+          SettingsManager.setAccessKey(accessKey.trim())
+          SettingsManager.setSecretKey(secretKey.trim())
+
+          // New server → old workspace/project IDs are meaningless ('' = unset).
+          SettingsManager.setWorkspaceId('')
+          SettingsManager.setProjectId('')
+
+          deps.connectionManager.update(ConnectionState.Connected, result.url)
+          NavigatorEngine.clearCache()
+          const roots = await NavigatorEngine.discoverWorkspaces(deps.httpRequest as any)
+          deps.navigatorProvider.setRoots(roots)
+          vscode.window.showInformationMessage('MeterSphere configured successfully!')
+        } catch (error) {
+          // Documented semantic choice: ANY throw settles on Disconnected —
+          // including discoverWorkspaces failing AFTER settings were saved.
+          // Disconnected keeps statusBarMenu (→ Refresh Navigator, which
+          // restores Connected on success) available as the recovery path.
+          deps.connectionManager.update(ConnectionState.Disconnected, String(error))
           try {
             vscode.window.showErrorMessage(
-              'Connection failed: ' + (result.error ?? 'Unknown error')
+              'Configure failed: ' + (error instanceof Error ? error.message : String(error))
             )
           } catch {
             // notification can throw if VSCode is shutting down
           }
-          return
         }
-
-        SettingsManager.setMsUrl(url.trim())
-        SettingsManager.setAccessKey(accessKey.trim())
-        SettingsManager.setSecretKey(secretKey.trim())
-
-        deps.connectionManager.update(ConnectionState.Connected, result.url)
-        NavigatorEngine.clearCache()
-        const roots = await NavigatorEngine.discoverWorkspaces(deps.httpRequest as any)
-        deps.navigatorProvider.setRoots(roots)
-        vscode.window.showInformationMessage('MeterSphere configured successfully!')
       })
     )
 
     context.subscriptions.push(
       vscode.commands.registerCommand('metersphere.testConnection', async () => {
         deps.connectionManager.update(ConnectionState.Connecting)
-        const result = await deps.connectionManager.testConnection()
-        if (result.success) {
-          const url = result.url ?? ''
-          let hostname = url
-          try { hostname = new URL(url).hostname } catch { /* use as-is */ }
-          await SidebarView.loadProjectModules()
-          vscode.window.showInformationMessage('Connected to ' + hostname)
-        } else {
-          vscode.window.showErrorMessage('Connection failed: ' + (result.error ?? 'Unknown error'))
+        try {
+          const result = await deps.connectionManager.testConnection()
+          if (result.success) {
+            const url = result.url ?? ''
+            let hostname = url
+            try { hostname = new URL(url).hostname } catch { /* use as-is */ }
+            await SidebarView.loadProjectModules()
+            vscode.window.showInformationMessage('Connected to ' + hostname)
+          } else {
+            vscode.window.showErrorMessage('Connection failed: ' + (result.error ?? 'Unknown error'))
+          }
+        } catch (error) {
+          deps.connectionManager.update(ConnectionState.Disconnected)
+          try {
+            vscode.window.showErrorMessage(
+              'Connection failed: ' + (error instanceof Error ? error.message : String(error))
+            )
+          } catch {
+            // notification can throw if VSCode is shutting down
+          }
+        } finally {
+          // testConnection's "Not configured" early return never calls update,
+          // and a rejection bypasses it entirely — never strand Connecting.
+          if (deps.connectionManager.getState() === ConnectionState.Connecting) {
+            deps.connectionManager.update(ConnectionState.Disconnected)
+          }
         }
       })
     )

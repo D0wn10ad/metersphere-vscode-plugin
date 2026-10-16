@@ -27,6 +27,33 @@ class ControlPanelViewProvider implements vscode.WebviewViewProvider {
   }
 }
 
+/**
+ * Persist the Navigator selection while keeping the invariant that a non-empty
+ * projectId always belongs to the current workspaceId:
+ * - workspace selected → projectId must be cleared (it belonged to the old workspace);
+ * - project selected → workspaceId is synced to the project's parent workspace
+ *   (project nodes carry their workspace in `parentId`), so switching directly
+ *   to a project under another workspace can never pair the new projectId with
+ *   the old workspaceId; without a resolvable workspace the projectId is dropped.
+ */
+export function applyNavigatorSelection(node: NavigatorNode): void {
+  if (node.type === NodeType.WORKSPACE) {
+    SettingsManager.setWorkspaceId(node.id)
+    SettingsManager.setProjectId('')
+    DebugLogger.log('Navigator', `Workspace selected: ${node.id}`, {})
+  } else if (node.type === NodeType.PROJECT) {
+    if (node.parentId) {
+      SettingsManager.setWorkspaceId(node.parentId)
+      SettingsManager.setProjectId(node.id)
+    } else if (SettingsManager.getWorkspaceId()) {
+      SettingsManager.setProjectId(node.id)
+    } else {
+      SettingsManager.setProjectId('')
+    }
+    DebugLogger.log('Navigator', `Project selected: ${node.id}`, {})
+  }
+}
+
 export function activate(context: vscode.ExtensionContext): void {
   ContextHolder.setContext(context)
   NavigatorEngine.setStateStorage(context.workspaceState)
@@ -51,14 +78,7 @@ export function activate(context: vscode.ExtensionContext): void {
     (treeView as any).onDidChangeSelection((e: { selection: NavigatorNode[] }) => {
       const node = e.selection[0]
       if (node) {
-        if (node.type === NodeType.WORKSPACE) {
-          SettingsManager.setWorkspaceId(node.id)
-          SettingsManager.setProjectId('')
-          DebugLogger.log('Navigator', `Workspace selected: ${node.id}`, {})
-        } else if (node.type === NodeType.PROJECT) {
-          SettingsManager.setProjectId(node.id)
-          DebugLogger.log('Navigator', `Project selected: ${node.id}`, {})
-        }
+        applyNavigatorSelection(node)
       }
     })
   }
