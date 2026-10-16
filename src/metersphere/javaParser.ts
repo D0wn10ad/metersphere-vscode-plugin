@@ -16,6 +16,8 @@ export interface ParsedApi {
   position?: { line: number; column: number };
   returnType?: string;
   responseStatus?: number;
+  responseHeaders?: { name: string; description?: string }[];
+  extraResponses?: { code: string; description?: string }[];
 }
 
 export interface ParsedParameter {

@@ -9,7 +9,7 @@
  * referenced schema is accumulated into `components.schemas` so each `$ref` resolves.
  */
 
-import { ParseResult } from './javaParser'
+import { ParseResult, ParsedApi } from './javaParser'
 import { TypeResolver } from './typeResolver'
 import { SchemaGenerator } from './schemaGenerator'
 import { ProjectSymbolIndex, ResolvedDto } from './javaAst/projectSymbolIndex'
@@ -51,9 +51,6 @@ export class OpenApiBuilder {
       const operation: any = {
         summary: api.summary || `${api.method} ${api.path}`,
         parameters: [],
-        responses: {
-          '200': { description: 'OK' },
-        },
       }
 
       if (api.parameters) {
@@ -92,7 +89,7 @@ export class OpenApiBuilder {
       }
 
       if (!paths[path]) paths[path] = {}
-      paths[path][method] = operation
+      paths[path][method] = OpenApiBuilder.withResponses(operation, api, schemas)
     }
 
     const doc: OpenApiDocument = {
@@ -107,6 +104,65 @@ export class OpenApiBuilder {
       doc.components = { schemas }
     }
     return doc
+  }
+
+  /**
+   * Non-collection response wrappers stripped before schema emission. Page/IPage
+   * unwrap FULLY to the payload type (no synthetic Page_T composite); collection
+   * wrappers (List/Collection) are left for fieldSchema, which array-wraps them.
+   */
+  private static readonly RESPONSE_WRAPPERS = new Set([
+    'Response',
+    'Result',
+    'R',
+    'HttpEntity',
+    'ResponseEntity',
+    'Optional',
+    'Page',
+    'IPage',
+  ])
+
+  private static unwrapPayload(raw: string | undefined): string | undefined {
+    let type = raw?.trim() || ''
+    if (!type) {
+      return undefined
+    }
+    for (let i = 0; i < 8; i++) {
+      const parsed = TypeResolver.parseGeneric(type)
+      if (!parsed || !OpenApiBuilder.RESPONSE_WRAPPERS.has(parsed.head)) {
+        break
+      }
+      type = parsed.args[0]?.trim() || ''
+      if (!type) {
+        return undefined
+      }
+    }
+    return type || undefined
+  }
+
+  /** Attach the success response (status + body + headers) and any @ApiResponse extras. */
+  private static withResponses(operation: any, api: ParsedApi, schemas: Record<string, any>): any {
+    const successCode = String(api.responseStatus ?? 200)
+    const success: any = { description: 'OK' }
+    const payload = OpenApiBuilder.unwrapPayload(api.returnType)
+    if (payload) {
+      success.content = { 'application/json': { schema: OpenApiBuilder.fieldSchema(payload, schemas) } }
+    }
+    if (api.responseHeaders && api.responseHeaders.length > 0) {
+      const headers: Record<string, any> = {}
+      for (const h of api.responseHeaders) {
+        headers[h.name] = { description: h.description ?? '', schema: { type: 'string' } }
+      }
+      success.headers = headers
+    }
+    const responses: Record<string, any> = { [successCode]: success }
+    for (const extra of api.extraResponses ?? []) {
+      if (!responses[extra.code]) {
+        responses[extra.code] = { description: extra.description ?? '' }
+      }
+    }
+    operation.responses = responses
+    return operation
   }
 
   /**

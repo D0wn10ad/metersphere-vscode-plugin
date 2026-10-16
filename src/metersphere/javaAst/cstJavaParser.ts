@@ -270,6 +270,26 @@ function parseMethod(md: CstNode, source: string, basePath: string, javadoc: Jav
       }
     }
   }
+  const responseHeaders = anns
+    .filter((a) => a.read.name === 'ResponseHeader')
+    .map((a) => ({
+      name: firstString(a.read.values['name']) ?? firstString(a.read.positional[0]) ?? '',
+      description: firstString(a.read.values['description']),
+    }))
+    .filter((h) => h.name);
+  if (responseHeaders.length > 0) {
+    api.responseHeaders = responseHeaders;
+  }
+  const extraResponses = anns
+    .filter((a) => a.read.name === 'ApiResponse')
+    .map((a): { code: string; description?: string } | undefined => {
+      const code = firstString(a.read.values['responseCode']) ?? firstString(a.read.positional[0]);
+      return code ? { code, description: firstString(a.read.values['description']) } : undefined;
+    })
+    .filter((r): r is { code: string; description?: string } => r !== undefined);
+  if (extraResponses.length > 0) {
+    api.extraResponses = extraResponses;
+  }
   if (description !== undefined) {
     api.description = description;
   }

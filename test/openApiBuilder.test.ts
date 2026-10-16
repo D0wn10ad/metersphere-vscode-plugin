@@ -336,3 +336,92 @@ describe('OpenApiBuilder — enriched parameters (T7)', () => {
     expect(p.default).toBe('asc')
   })
 })
+
+describe('OpenApiBuilder — real responses (T8)', () => {
+  const buildWith = (api: Record<string, unknown>): any =>
+    OpenApiBuilder.build({ classes: [], apis: [api] } as unknown as ParseResult, 'T8')
+
+  test('Response<Page<UserDto>> unwraps to a UserDto $ref', () => {
+    resetUploadSymbolIndex()
+    getUploadSymbolIndex().register(
+      'public class UserDto { private String name; }',
+      'file:///UserDto.java',
+    )
+    const doc = buildWith({
+      method: 'GET',
+      path: '/u',
+      fullPath: '/u',
+      returnType: 'Response<Page<UserDto>>',
+      parameters: [],
+    })
+    const resp = doc.paths['/u'].get.responses['200']
+    expect(resp.content['application/json'].schema.$ref).toBe('#/components/schemas/UserDto')
+    resetUploadSymbolIndex()
+  })
+
+  test('void (no returnType) emits code only, no content', () => {
+    const doc = buildWith({ method: 'GET', path: '/v', fullPath: '/v', parameters: [] })
+    const resp = doc.paths['/v'].get.responses['200']
+    expect(resp.description).toBe('OK')
+    expect(resp.content).toBeUndefined()
+  })
+
+  test('@ResponseStatus(CREATED) becomes the 201 key', () => {
+    const doc = buildWith({
+      method: 'POST',
+      path: '/c',
+      fullPath: '/c',
+      responseStatus: 201,
+      returnType: 'String',
+      parameters: [],
+    })
+    expect(doc.paths['/c'].post.responses['201']).toBeDefined()
+    expect(doc.paths['/c'].post.responses['200']).toBeUndefined()
+  })
+
+  test('@ResponseHeader captured headers land under the success response', () => {
+    const doc = buildWith({
+      method: 'GET',
+      path: '/h',
+      fullPath: '/h',
+      responseHeaders: [{ name: 'X-Trace', description: 'trace id' }],
+      parameters: [],
+    })
+    const headers = doc.paths['/h'].get.responses['200'].headers
+    expect(headers['X-Trace']).toBeDefined()
+    expect(headers['X-Trace'].description).toBe('trace id')
+  })
+
+  test('@ApiResponse extras emit additional response codes without clobbering success', () => {
+    const doc = buildWith({
+      method: 'GET',
+      path: '/e',
+      fullPath: '/e',
+      responseStatus: 200,
+      extraResponses: [{ code: '404', description: 'Not found' }],
+      parameters: [],
+    })
+    const responses = doc.paths['/e'].get.responses
+    expect(responses['200']).toBeDefined()
+    expect(responses['404'].description).toBe('Not found')
+  })
+
+  test('List<UserDto> payload is array-wrapped', () => {
+    resetUploadSymbolIndex()
+    getUploadSymbolIndex().register(
+      'public class UserDto { private String name; }',
+      'file:///UserDto.java',
+    )
+    const doc = buildWith({
+      method: 'GET',
+      path: '/l',
+      fullPath: '/l',
+      returnType: 'List<UserDto>',
+      parameters: [],
+    })
+    const schema = doc.paths['/l'].get.responses['200'].content['application/json'].schema
+    expect(schema.type).toBe('array')
+    expect(schema.items.$ref).toBe('#/components/schemas/UserDto')
+    resetUploadSymbolIndex()
+  })
+})
