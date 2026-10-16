@@ -169,6 +169,8 @@ Tests use a mock VSCode stack: `src/vscode.d.ts` and `test/vscode-mock-setup.js`
 
 | Fix | Details |
 |-----|---------|
+| Full-spec OpenAPI export | Responses now carry real status codes (`@ResponseStatus`) + body schemas (wrapper types like `Response<Page<T>>` unwrap to the payload), parameters emit description/default/validation (javadoc `@param` + bean-validation annotations), DTO fields keep their constraints, enums/records/interfaces and `Map<K,V>` are modeled, `@PreAuthorize`-style auth becomes a bearer-JWT `securityScheme`, operations get `operationId` + `tags`, and DTOs from non-uploaded files are resolved via an async pre-pass (OpenAPI format only). `format` hints limited to `date-time`/`uuid`. See `docs/superpowers/specs/2026-10-15-openapi-spec-coverage.md`. |
+| Multipart + cookie params | `@RequestPart`/`MultipartFile` params export as `multipart/form-data` with per-part schemas; `@CookieValue` exports as `in: cookie`. |
 | API naming precedence | `@Operation(summary)` > first Javadoc line > API path. Removed `@ApiOperation` as a naming source. |
 | Header propagation | `@RequestHeader` names now export into Postman/MeterSphere request headers instead of being dropped. |
 | AST parser parity | `JavaParserAst` now parses `@RequestHeader` in per-method analysis, matching `JavaParser` behavior. |

@@ -266,8 +266,7 @@ This extension supports multiple ways to sync Java Spring Controllers to MeterSp
 
 The extension supports OpenAPI 3.0 JSON export (`platform=Swagger2`) alongside legacy Postman format, controlled by `metersphere.exportFormat` setting.
 
-See spec: `docs/superpowers/specs/2026-05-23-openapi-schema-resolution.md`
-See plan: `docs/superpowers/plans/2026-05-23-openapi-schema-resolution-plan.md`
+See spec: `docs/superpowers/specs/2026-10-15-openapi-spec-coverage.md`
 
 ### Type Resolution Tiers
 
@@ -275,10 +274,35 @@ See plan: `docs/superpowers/plans/2026-05-23-openapi-schema-resolution-plan.md`
 |------|------|------|------------------|---------|
 | 1 | Return type string | `java-ast` AST (method node) | Raw type text: `Response<IDDShoppingModel>` | No |
 | 2 | Type name / $ref | `typeResolver.ts` | Strips generics → `IDDShoppingModel` | No |
-| 3 | Field-level schemas | Red Hat Java LSP hover (deferred) | Type → field list → `components/schemas` | Yes |
-| 4 | Deep nested expansion | Recursive LSP calls (deferred) | Full nested schema tree | Yes |
+| 3 | Field-level schemas | `projectSymbolIndex.ts` async pre-pass (LSP symbol provider → bounded disk scan) | Type → field list → `components/schemas` | Optional (degrades gracefully) |
+| 4 | Deep nested expansion | Recursive resolution through the same index (bounded, capped at 64 type names per upload) | Nested `$ref`s for cross-file DTOs, enums, records | Optional (degrades gracefully) |
 
-Tiers 1–2 are implemented in v1. Tiers 3–4 require `redhat.java` extension and are deferred.
+Tiers 1–2 run synchronously at build time. Tiers 3–4 run in the upload path via the async DTO
+pre-pass (`parseUploadedFiles(..., isOpenApi=true)` → `resolveDependencyTypes`), gated to the
+OpenAPI export only (never for Postman); results land in the symbol-index cache which is cleared
+at each pre-pass start so a prior upload cannot leak stale entries. Without the Red Hat Java
+extension the pre-pass falls back to a bounded on-disk scan, and unresolvable types export as
+generic objects — upload never blocks or throws.
+
+### Emitted export surface (OpenAPI path)
+
+- Responses: real status code (`@ResponseStatus` else 200) + body schema; wrapper types
+  (`Response`/`Result`/`R`/`HttpEntity`/`ResponseEntity`/`Optional`/`Page`/`IPage`) unwrap fully to
+  the payload (`Response<Page<T>>` → `T`); `@ResponseHeader` → response `headers`; `@ApiResponse` →
+  extra response codes.
+- Parameters: `description` (`@ApiParam`/`@Parameter` > javadoc `@param`), `default` (coerced to the
+  schema type for numerics), `required`, and validation keywords (`@NotNull`/`@Size`/`@Min`/`@Max`/
+  `@Pattern`/`@Email` — positional and named annotation forms both captured).
+- DTO fields: field-level validation + `@Schema` description, class-level `required`.
+- Types: `enum` → `{type:'string', enum:[...]}`; `record` → object from components; `interface` →
+  best-effort from methods; `Map<K,V>` → `{type:'object', additionalProperties:<V>}`.
+- Auth: `@PreAuthorize`/`@Secured`/`@RolesAllowed` → `components.securitySchemes.bearerAuth`
+  (bearer JWT) + document `security`; `@PermitAll` → per-op `security: []`; springdoc
+  `@SecurityScheme`/`@SecurityRequirement` override.
+- Misc: `operationId` (collision-suffixed) + `tags`; `@RequestPart`/`MultipartFile` →
+  `multipart/form-data` (parts win over `@RequestBody`); `@CookieValue` → `in: cookie`.
+- `format` hints are limited to `date-time` (`LocalDateTime`/`Date`) and `uuid` (`UUID`) — integer/
+  number schemas stay bare (pinned export tests depend on it).
 
 ### New Modules
 
@@ -287,6 +311,7 @@ Tiers 1–2 are implemented in v1. Tiers 3–4 require `redhat.java` extension a
 | TypeResolver | `typeResolver.ts` | Extract type name from return type string, build type registry |
 | SchemaGenerator | `schemaGenerator.ts` | Convert Java type → OpenAPI Schema Object |
 | OpenApiBuilder | `openApiBuilder.ts` | Assemble full OpenAPI 3.0 document |
+| ValidationSchema | `validationSchema.ts` | Map bean-validation constraints → JSON Schema keywords |
 
 ---
 
