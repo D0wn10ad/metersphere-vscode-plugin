@@ -9,7 +9,8 @@
  * referenced schema is accumulated into `components.schemas` so each `$ref` resolves.
  */
 
-import { ParseResult, ParsedApi } from './javaParser'
+import { ParseResult, ParsedApi, ParsedParameter } from './javaParser'
+import { DebugLogger } from './debugLogger'
 import { TypeResolver } from './typeResolver'
 import { SchemaGenerator } from './schemaGenerator'
 import { ProjectSymbolIndex, ResolvedDto } from './javaAst/projectSymbolIndex'
@@ -63,15 +64,13 @@ export class OpenApiBuilder {
       }
 
       if (api.parameters) {
+        const bodyParams: ParsedParameter[] = []
         for (const param of api.parameters) {
           if (param.in === 'body') {
-            operation.requestBody = {
-              content: {
-                'application/json': { schema: OpenApiBuilder.bodySchema(param.type, schemas) },
-              },
-            }
-          } else {
-            let schema: any = OpenApiBuilder.primitiveSchema(param.type)
+            bodyParams.push(param)
+            continue
+          }
+          let schema: any = OpenApiBuilder.primitiveSchema(param.type)
             if (param.validation && param.validation.length > 0) {
               schema = applyValidation(schema, param.validation, param.type ?? '')
             }
@@ -93,7 +92,9 @@ export class OpenApiBuilder {
                   : param.defaultValue
             }
             operation.parameters.push(entry)
-          }
+        }
+        if (bodyParams.length > 0) {
+          operation.requestBody = OpenApiBuilder.requestBodyFor(bodyParams, schemas)
         }
       }
 
@@ -171,6 +172,39 @@ export class OpenApiBuilder {
     return {
       schemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } },
       security: [{ [name]: [] }],
+    }
+  }
+
+  /**
+   * Request body from the collected body params: any @RequestPart part makes it
+   * multipart/form-data with per-part schemas (parts win — @RequestBody alongside
+   * parts is invalid Spring, logged and ignored); otherwise JSON as before.
+   */
+  private static requestBodyFor(bodyParams: ParsedParameter[], schemas: Record<string, any>): any {
+    const parts = bodyParams.filter((p) => p.part)
+    if (parts.length === 0) {
+      return {
+        content: {
+          'application/json': { schema: OpenApiBuilder.bodySchema(bodyParams[0].type, schemas) },
+        },
+      }
+    }
+    if (parts.length !== bodyParams.length) {
+      DebugLogger.log('Sync', 'Method mixes @RequestBody with @RequestPart parts; emitting parts only', {
+        ignored: bodyParams.length - parts.length,
+      })
+    }
+    const properties: Record<string, any> = {}
+    for (const part of parts) {
+      properties[part.name] =
+        part.type?.trim() === 'MultipartFile'
+          ? { type: 'string', format: 'binary' }
+          : OpenApiBuilder.bodySchema(part.type, schemas)
+    }
+    return {
+      content: {
+        'multipart/form-data': { schema: { type: 'object', properties } },
+      },
     }
   }
 

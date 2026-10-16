@@ -245,3 +245,38 @@ describe('cstParamParser — positional constraints + javadoc @param (T3)', () =
     expect(params[0].description).toBeUndefined();
   });
 });
+
+describe('cstParamParser — @RequestPart + @CookieValue (T12)', () => {
+  it('maps @RequestPart to in:body with part:true', () => {
+    const src = [
+      'package com.example.demo;',
+      'import org.springframework.web.bind.annotation.*;',
+      'import org.springframework.web.multipart.MultipartFile;',
+      '@RestController',
+      'public class C {',
+      '  @PostMapping("/u")',
+      '  public void h(@RequestPart("file") MultipartFile file) { }',
+      '}',
+    ].join('\n');
+    const { node, source } = firstMethodOf(src);
+    const params = parseParameters(node, source);
+    expect(params).toHaveLength(1);
+    expect(params[0]).toMatchObject({ name: 'file', in: 'body', part: true, type: 'MultipartFile' });
+  });
+
+  it('maps @CookieValue to in:cookie with required default false', () => {
+    const src = [
+      'package com.example.demo;',
+      'import org.springframework.web.bind.annotation.*;',
+      '@RestController',
+      'public class C {',
+      '  @GetMapping("/x")',
+      '  public void h(@CookieValue String sid) { }',
+      '}',
+    ].join('\n');
+    const { node, source } = firstMethodOf(src);
+    const params = parseParameters(node, source);
+    expect(params).toHaveLength(1);
+    expect(params[0]).toMatchObject({ name: 'sid', in: 'cookie', required: false });
+  });
+});

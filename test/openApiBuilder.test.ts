@@ -572,3 +572,56 @@ describe('OpenApiBuilder — operationId, tags, enum/record schemas (T10)', () =
     })
   })
 })
+
+describe('OpenApiBuilder — multipart parts + cookie params (T12)', () => {
+  const buildWith = (parameters: any[]): any =>
+    OpenApiBuilder.build(
+      { classes: [], apis: [{ method: 'POST', path: '/u', fullPath: '/u', parameters }] } as unknown as ParseResult,
+      'T12',
+    )
+
+  test('two @RequestPart parts → multipart/form-data with per-part schemas', () => {
+    const doc = buildWith([
+      { name: 'file', in: 'body', part: true, type: 'MultipartFile' },
+      { name: 'meta', in: 'body', part: true, type: 'Meta' },
+    ])
+    const body = doc.paths['/u'].post.requestBody.content['multipart/form-data'].schema
+    expect(body.properties.file).toEqual({ type: 'string', format: 'binary' })
+    expect(body.properties.meta).toEqual({ type: 'object' })
+    expect(doc.paths['/u'].post.requestBody.content['application/json']).toBeUndefined()
+  })
+
+  test('@RequestBody-only op unchanged (JSON)', () => {
+    const doc = buildWith([{ name: 'body', in: 'body', type: 'Meta' }])
+    expect(doc.paths['/u'].post.requestBody.content['application/json']).toBeDefined()
+    expect(doc.paths['/u'].post.requestBody.content['multipart/form-data']).toBeUndefined()
+  })
+
+  test('mixed @RequestBody + parts → parts win (multipart), JSON dropped', () => {
+    const doc = buildWith([
+      { name: 'body', in: 'body', type: 'Meta' },
+      { name: 'file', in: 'body', part: true, type: 'MultipartFile' },
+    ])
+    const content = doc.paths['/u'].post.requestBody.content
+    expect(content['multipart/form-data']).toBeDefined()
+    expect(content['application/json']).toBeUndefined()
+  })
+
+  test('@CookieValue param emits in:cookie', () => {
+    const doc = OpenApiBuilder.build(
+      {
+        classes: [],
+        apis: [
+          {
+            method: 'GET',
+            path: '/c',
+            fullPath: '/c',
+            parameters: [{ name: 'sid', in: 'cookie', type: 'String' }],
+          },
+        ],
+      } as unknown as ParseResult,
+      'T12',
+    )
+    expect(doc.paths['/c'].get.parameters[0]).toMatchObject({ name: 'sid', in: 'cookie' })
+  })
+})

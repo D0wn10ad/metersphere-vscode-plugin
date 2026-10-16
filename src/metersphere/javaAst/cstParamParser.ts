@@ -22,27 +22,31 @@ import { AnnotationResult, AnnotationValue, booleanValue, firstString, readAnnot
 import { JavadocIndex } from './javadocIndex';
 
 /** Spring parameter annotations and the `in` kind each implies. */
-const KIND_BY_ANNOTATION: Record<string, 'path' | 'query' | 'body' | 'header'> = {
+const KIND_BY_ANNOTATION: Record<string, 'path' | 'query' | 'body' | 'header' | 'cookie'> = {
   PathVariable: 'path',
   RequestParam: 'query',
   RequestHeader: 'header',
   RequestBody: 'body',
+  RequestPart: 'body',
+  CookieValue: 'cookie',
 };
 
-/** Required defaults per kind (plan spec: path=true, body=true, query/header=false). */
-const REQUIRED_DEFAULT: Record<'path' | 'query' | 'body' | 'header', boolean> = {
+/** Required defaults per kind (plan spec: path=true, body=true, query/header/cookie=false). */
+const REQUIRED_DEFAULT: Record<'path' | 'query' | 'body' | 'header' | 'cookie', boolean> = {
   path: true,
   body: true,
   query: false,
   header: false,
+  cookie: false,
 };
 
 /** Name fallbacks per kind (regex parity: javaParser.ts:430/451/477/417). */
-const KIND_FALLBACK: Record<'path' | 'query' | 'body' | 'header', string> = {
+const KIND_FALLBACK: Record<'path' | 'query' | 'body' | 'header' | 'cookie', string> = {
   path: 'path',
   query: 'param',
   header: 'header',
   body: 'body',
+  cookie: 'cookie',
 };
 
 /** JSR-303 constraint annotations recognized on parameters. */
@@ -179,6 +183,9 @@ export function parseParameters(
       in: kind,
       required: booleanValue(kindAnn.values['required']) ?? REQUIRED_DEFAULT[kind],
     };
+    if (kindAnn.name === 'RequestPart') {
+      parsed.part = true;
+    }
 
     const ut = findFirst(param, 'unannType');
     const typeText = ut ? text(ut, source).trim() : '';

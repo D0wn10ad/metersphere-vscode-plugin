@@ -28,7 +28,9 @@ export interface ParsedApi {
 
 export interface ParsedParameter {
   name: string;
-  in: 'path' | 'query' | 'body' | 'header';
+  in: 'path' | 'query' | 'body' | 'header' | 'cookie';
+  /** True when the param is a multipart part (@RequestPart), not a JSON body. */
+  part?: boolean;
   required?: boolean;
   type?: string;
   description?: string;
