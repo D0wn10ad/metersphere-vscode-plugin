@@ -180,12 +180,19 @@ export function parseParameters(
 
     const explicitRequired = booleanValue(kindAnn.values['required']);
     const defaultValue = firstString(kindAnn.values['defaultValue']);
+    // A parameter with a defaultValue is never required in Spring unless `required`
+    // is set explicitly; otherwise fall back to the per-kind default.
+    let required = REQUIRED_DEFAULT[kind];
+    if (defaultValue !== undefined) {
+      required = false;
+    }
+    if (explicitRequired !== undefined) {
+      required = explicitRequired;
+    }
     const parsed: ParsedParameter = {
       name: nameOverride(kindAnn) || declaratorName || KIND_FALLBACK[kind],
       in: kind,
-      // A parameter with a defaultValue is never required in Spring unless `required`
-      // is set explicitly; otherwise fall back to the per-kind default.
-      required: explicitRequired ?? (defaultValue !== undefined ? false : REQUIRED_DEFAULT[kind]),
+      required,
     };
     if (kindAnn.name === 'RequestPart') {
       parsed.part = true;

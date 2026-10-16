@@ -36,8 +36,7 @@ export async function httpRequest(
   method: string,
   url: string,
   headers: Record<string, string> = {},
-  body?: any,
-  _tokenOverride?: string
+  body?: any
 ): Promise<HttpResponse> {
   const start = Date.now()
   const fetchFn = getFetch()

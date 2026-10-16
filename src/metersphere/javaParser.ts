@@ -293,8 +293,6 @@ export class JavaParser {
           methodEnd = nextAnnotation > 0 ? nextAnnotation : code.length;
         }
         
-        const methodBodyArea = code.substring(Math.max(0, match.index - 200), methodEnd > 0 ? methodEnd : code.length);
-
         // Priority chain: @Operation(summary) > @ApiOperation(value|summary) > path
         for (const op of operationMatches) {
           if (op.index < match.index && match.index - op.index < 200) {
@@ -448,7 +446,10 @@ export class JavaParser {
         // annotation and the method body's opening brace. Scanning past the
         // body brace would bind @RequestBody mentions from comments, strings,
         // or later methods to this API.
-        const paramListEnd = openBrace > 0 ? openBrace : (methodEnd > 0 ? methodEnd : code.length);
+        let paramListEnd = methodEnd > 0 ? methodEnd : code.length;
+        if (openBrace > 0) {
+          paramListEnd = openBrace;
+        }
         const requestBodyRegex = /@RequestBody/;
         if (requestBodyRegex.test(code.substring(methodStart, paramListEnd))) {
           api.parameters.push({
@@ -576,8 +577,6 @@ export class JavaParser {
         const nextAnnotation = code.indexOf('@', rmMatch.index + 20);
         methodEnd = nextAnnotation > 0 ? nextAnnotation : code.length;
       }
-
-      const methodBodyArea = code.substring(Math.max(0, rmMatch.index - 200), methodEnd > 0 ? methodEnd : code.length);
 
       for (const op of operationMatches) {
         if (op.index < rmMatch.index && rmMatch.index - op.index < 200) {

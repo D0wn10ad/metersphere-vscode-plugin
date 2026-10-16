@@ -244,11 +244,4 @@ export interface Window extends WindowExtra {
   export interface WebviewViewProvider {
     resolveWebviewView(webviewView: WebviewView): void | Thenable<void>
   }
-
-  export interface WindowExtra {
-    registerWebviewViewProvider(
-      viewId: string,
-      provider: WebviewViewProvider
-    ): Disposable
-  }
 }

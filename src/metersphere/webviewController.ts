@@ -421,7 +421,7 @@ export class WebViewController {
         const current = sel.value;
         sel.innerHTML = '<option value="">No environment</option>';
         (msg.payload.environments || []).forEach(function(env) {
-          var opt = document.createElement('option');
+          const opt = document.createElement('option');
           opt.value = env.id;
           opt.textContent = env.name || 'Unnamed';
           sel.appendChild(opt);

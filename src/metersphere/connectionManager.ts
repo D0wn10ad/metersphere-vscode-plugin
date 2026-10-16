@@ -13,7 +13,6 @@ export enum ConnectionState {
 export class ConnectionManager {
   private statusBarItem: vscode.StatusBarItem
   private state: ConnectionState = ConnectionState.Unconfigured
-  private lastError?: string
   private currentUrl?: string
   private testGeneration = 0
 
