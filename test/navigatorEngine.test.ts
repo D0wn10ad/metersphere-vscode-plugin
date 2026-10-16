@@ -244,4 +244,80 @@ describe('NavigatorEngine', () => {
     const nodes = await NavigatorEngine.discoverApis('proj-1', failFn as any, 'mod-1')
     expect(nodes).toEqual([])
   })
+
+  test('non-2xx workspace response is not cached in the static cache', async () => {
+    const fetchFn = jest.fn()
+      .mockResolvedValueOnce({ status: 500, body: { message: 'boom' } })
+      .mockResolvedValueOnce({ status: 200, body: { data: [{ id: 'ws-1', name: 'Test Workspace' }] } })
+
+    const first = await NavigatorEngine.discoverWorkspaces(fetchFn as any)
+    expect(first).toEqual([])
+
+    const second = await NavigatorEngine.discoverWorkspaces(fetchFn as any)
+    expect(second.map(node => node.id)).toEqual(['ws-1'])
+  })
+
+  test('success:false workspace response is not written to state storage cache', async () => {
+    const store = new Map<string, unknown>()
+    NavigatorEngine.setStateStorage({
+      get: (key: string) => store.get(key),
+      update: async (key: string, value: unknown) => { store.set(key, value) },
+    } as any)
+
+    const fetchFn = jest.fn()
+      .mockResolvedValueOnce({ status: 200, body: { success: false, message: 'nope', data: null } })
+      .mockResolvedValueOnce({ status: 200, body: { data: [{ id: 'ws-1', name: 'Test Workspace' }] } })
+
+    const first = await NavigatorEngine.discoverWorkspaces(fetchFn as any)
+    expect(first).toEqual([])
+
+    // Bypass the static workspace cache so the second call must hit state storage.
+    NavigatorEngine.clearCache()
+    const second = await NavigatorEngine.discoverWorkspaces(fetchFn as any)
+    expect(second.map(node => node.id)).toEqual(['ws-1'])
+  })
+
+  test('failed project discovery is not cached in state storage', async () => {
+    const store = new Map<string, unknown>()
+    NavigatorEngine.setStateStorage({
+      get: (key: string) => store.get(key),
+      update: async (key: string, value: unknown) => { store.set(key, value) },
+    } as any)
+
+    const fetchFn = jest.fn()
+      .mockResolvedValueOnce({ status: 500, body: { success: false, message: 'boom' } })
+      .mockResolvedValueOnce({ status: 200, body: { data: [{ id: 'proj-1', name: 'Test Project', workspaceId: 'ws-1' }] } })
+
+    const first = await NavigatorEngine.discoverProjects('ws-1', fetchFn as any)
+    expect(first).toEqual([])
+
+    const second = await NavigatorEngine.discoverProjects('ws-1', fetchFn as any)
+    expect(second.map(node => node.id)).toEqual(['proj-1'])
+  })
+
+  test('rebuilds full nested tree from flat module payload with parentId links', async () => {
+    const flatModuleFetch = async (_method: string, url: string) => {
+      if (url.includes('/module/list')) {
+        return {
+          status: 200,
+          body: {
+            data: [
+              { id: 'mod-a', name: 'Module A', parentId: null, projectId: 'proj-1' },
+              { id: 'mod-a-1', name: 'Module A.1', parentId: 'mod-a', projectId: 'proj-1' },
+              { id: 'mod-a-1-1', name: 'Module A.1.1', parentId: 'mod-a-1', projectId: 'proj-1' },
+              { id: 'mod-b', name: 'Module B', parentId: 'proj-1', projectId: 'proj-1' },
+              { id: 'mod-dangling', name: 'Dangling', parentId: 'missing-parent', projectId: 'proj-1' },
+            ],
+          },
+        }
+      }
+      return { status: 200, body: { data: [] } }
+    }
+
+    const nodes = await NavigatorEngine.discoverModules('proj-1', flatModuleFetch as any)
+    expect(nodes.map(node => node.id)).toEqual(['mod-a', 'mod-b', 'mod-dangling'])
+    expect(nodes[0].getChildren().map(child => child.id)).toEqual(['mod-a-1'])
+    expect(nodes[0].getChildren()[0].getChildren().map(child => child.id)).toEqual(['mod-a-1-1'])
+    expect(nodes[1].getChildren()).toEqual([])
+  })
 })

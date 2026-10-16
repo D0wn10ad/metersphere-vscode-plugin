@@ -97,6 +97,26 @@ export class NavigatorEngine {
     return node
   }
 
+  private static linkFlatModules(items: MsModule[], projectId: string): MsModule[] {
+    type LinkedModule = MsModule & { children: MsModule[] }
+    const clones: LinkedModule[] = items.map(mod => ({ ...mod, children: [] }))
+    const byId = new Map<string, LinkedModule>()
+    for (const clone of clones) {
+      if (!byId.has(clone.id)) byId.set(clone.id, clone)
+    }
+    const roots: MsModule[] = []
+    for (const clone of clones) {
+      const parent = clone.parentId ? byId.get(clone.parentId) : undefined
+      if (parent && parent !== clone) {
+        parent.children.push(clone)
+      } else {
+        clone.parentId = projectId
+        roots.push(clone)
+      }
+    }
+    return roots
+  }
+
   private static mapModuleTree(mod: MsModule, projectId: string): NavigatorNode {
     const node = new NavigatorNode({
       id: mod.id,
@@ -122,6 +142,15 @@ export class NavigatorEngine {
     return node
   }
 
+  private static assertDiscoveryOk(resp: HttpResponse, label: string): void {
+    const statusOk = typeof resp.status === 'number' && resp.status >= 200 && resp.status < 300
+    const body = resp.body as { success?: boolean; message?: string } | undefined
+    const successOk = body?.success !== false
+    if (!statusOk || !successOk) {
+      throw new Error(`${label} discovery failed (HTTP ${resp.status})${body?.message ? `: ${body.message}` : ''}`)
+    }
+  }
+
   private static buildAuthHeaders(contentType?: string): Record<string, string> {
     const ak = SettingsManager.getAccessKey()
     const sk = SettingsManager.getSecretKey()
@@ -143,16 +172,17 @@ export class NavigatorEngine {
       DebugLogger.log('Navigator', 'Using cached workspaces', { count: NavigatorEngine.workspaceCache.length })
       return NavigatorEngine.workspaceCache
     }
-    return NavigatorEngine.getCached('workspaces', async () => {
-      try {
+    try {
+      return await NavigatorEngine.getCached('workspaces', async () => {
         const baseUrl = NavigatorEngine.getBaseUrl()
         const headers = NavigatorEngine.buildAuthHeaders()
         const url = `${baseUrl}/api/workspace/list/userworkspace`
         DebugLogger.log('Navigator', 'Discovering workspaces', { url, hasHeaders: !!headers.accessKey })
-        
+
         const resp = await fetchFn('GET', url, headers)
         DebugLogger.log('Navigator', 'Workspaces response', { status: resp.status, bodyKeys: Object.keys(resp.body ?? {}) })
-        
+        NavigatorEngine.assertDiscoveryOk(resp, 'Workspaces')
+
         const data = (resp.body as { data: MsWorkspace[] }).data ?? []
         const nodes = data.map(ws => new NavigatorNode({
           id: ws.id,
@@ -162,32 +192,33 @@ export class NavigatorEngine {
         NavigatorEngine.workspaceCache = nodes
         DebugLogger.log('Navigator', 'Workspaces discovered', { count: nodes.length })
         return nodes
-      } catch (error) {
-        DebugLogger.error('Navigator', 'Failed to discover workspaces', error)
-        console.warn('NavigatorEngine: failed to discover workspaces:', error)
-        return []
-      }
-    })
+      })
+    } catch (error) {
+      DebugLogger.error('Navigator', 'Failed to discover workspaces', error)
+      console.warn('NavigatorEngine: failed to discover workspaces:', error)
+      return []
+    }
   }
 
   static async discoverProjects(
     workspaceId: string,
     fetchFn: (method: string, url: string, headers: Record<string, string>, body?: unknown) => Promise<HttpResponse>
   ): Promise<NavigatorNode[]> {
-    return NavigatorEngine.getCached(`projects_${workspaceId}`, async () => {
-      const baseUrl = NavigatorEngine.getBaseUrl()
-      const body: Record<string, unknown> = { workspaceIds: [workspaceId] }
-      const userId = SettingsManager.getCurrentUserId()
-      if (userId) body.userId = userId
-      const headers = NavigatorEngine.buildAuthHeaders('application/json')
-      const url = `${baseUrl}/api/project/list/related`
-      
-      DebugLogger.log('Navigator', 'Discovering projects', { workspaceId, url, hasHeaders: !!headers.accessKey })
-      
-      try {
+    try {
+      return await NavigatorEngine.getCached(`projects_${workspaceId}`, async () => {
+        const baseUrl = NavigatorEngine.getBaseUrl()
+        const body: Record<string, unknown> = { workspaceIds: [workspaceId] }
+        const userId = SettingsManager.getCurrentUserId()
+        if (userId) body.userId = userId
+        const headers = NavigatorEngine.buildAuthHeaders('application/json')
+        const url = `${baseUrl}/api/project/list/related`
+
+        DebugLogger.log('Navigator', 'Discovering projects', { workspaceId, url, hasHeaders: !!headers.accessKey })
+
         const resp = await fetchFn('POST', url, headers, body)
         DebugLogger.log('Navigator', 'Projects response', { status: resp.status, bodyKeys: Object.keys(resp.body ?? {}) })
-        
+        NavigatorEngine.assertDiscoveryOk(resp, 'Projects')
+
         const data = (resp.body as { data: MsProject[] }).data ?? []
         const nodes = data.map(proj => new NavigatorNode({
           id: proj.id,
@@ -197,11 +228,11 @@ export class NavigatorEngine {
         }))
         DebugLogger.log('Navigator', 'Projects discovered', { count: nodes.length })
         return nodes
-      } catch (error) {
-        DebugLogger.error('Navigator', 'Failed to discover projects', error)
-        return []
-      }
-    })
+      })
+    } catch (error) {
+      DebugLogger.error('Navigator', 'Failed to discover projects', error)
+      return []
+    }
   }
 
   static async discoverModules(
@@ -243,7 +274,10 @@ export class NavigatorEngine {
             childIds: (mod.children ?? []).map(child => child.id),
           })),
         })
-        const topLevelModules = data.filter(mod => !mod.parentId || mod.parentId === projectId)
+        const nestedShaped = data.some(mod => Array.isArray(mod.children) && mod.children.length > 0)
+        const topLevelModules = nestedShaped
+          ? data.filter(mod => !mod.parentId || mod.parentId === projectId)
+          : NavigatorEngine.linkFlatModules(data, projectId)
         const nodes = topLevelModules.map(mod => NavigatorEngine.mapModuleTree(mod, projectId))
         DebugLogger.log('Navigator', 'Modules discovered', {
           count: nodes.length,
