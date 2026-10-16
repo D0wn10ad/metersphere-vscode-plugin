@@ -290,6 +290,27 @@ function parseMethod(md: CstNode, source: string, basePath: string, javadoc: Jav
   if (extraResponses.length > 0) {
     api.extraResponses = extraResponses;
   }
+  if (anns.some((a) => ['PreAuthorize', 'Secured', 'RolesAllowed'].includes(a.read.name))) {
+    api.secured = true;
+  }
+  if (anns.some((a) => a.read.name === 'PermitAll')) {
+    api.permitAll = true;
+  }
+  const secReqAnn = anns.find((a) => a.read.name === 'SecurityRequirement');
+  if (secReqAnn) {
+    const name = firstString(secReqAnn.read.values['name']) ?? firstString(secReqAnn.read.positional[0]);
+    if (name) {
+      api.securityRequirement = name;
+    }
+  }
+  const secSchemeAnn = anns.find((a) => a.read.name === 'SecurityScheme');
+  if (secSchemeAnn) {
+    const name = firstString(secSchemeAnn.read.values['name']) ?? firstString(secSchemeAnn.read.positional[0]);
+    const type = firstString(secSchemeAnn.read.values['type']) ?? firstString(secSchemeAnn.read.positional[1]);
+    if (name && type) {
+      api.securityScheme = { name, type };
+    }
+  }
   if (description !== undefined) {
     api.description = description;
   }
@@ -379,6 +400,27 @@ export function parseJavaCst(source: string, uri: string): ParseResult {
     const basePath = classRm ? mappingPath(classRm.read) : '';
 
     const parsedClass: ParsedClass = { name, isRestController, isController, basePath, apis: [] };
+    if (classAnns.some((a) => ['PreAuthorize', 'Secured', 'RolesAllowed'].includes(a.read.name))) {
+      parsedClass.secured = true;
+    }
+    const classSecReq = classAnns.find((a) => a.read.name === 'SecurityRequirement');
+    if (classSecReq) {
+      const reqName =
+        firstString(classSecReq.read.values['name']) ?? firstString(classSecReq.read.positional[0]);
+      if (reqName) {
+        parsedClass.securityRequirement = reqName;
+      }
+    }
+    const classSecScheme = classAnns.find((a) => a.read.name === 'SecurityScheme');
+    if (classSecScheme) {
+      const schemeName =
+        firstString(classSecScheme.read.values['name']) ?? firstString(classSecScheme.read.positional[0]);
+      const schemeType =
+        firstString(classSecScheme.read.values['type']) ?? firstString(classSecScheme.read.positional[1]);
+      if (schemeName && schemeType) {
+        parsedClass.securityScheme = { name: schemeName, type: schemeType };
+      }
+    }
     const classBody = ncd ? findFirst(ncd, 'classBody') : undefined;
     if (classBody) {
       for (const md of findAll(classBody, 'methodDeclaration')) {

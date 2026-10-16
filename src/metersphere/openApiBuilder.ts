@@ -19,7 +19,8 @@ export interface OpenApiDocument {
   openapi: string
   info: { title: string; version: string }
   paths: Record<string, Record<string, any>>
-  components?: { schemas: Record<string, any> }
+  components?: { schemas?: Record<string, any>; securitySchemes?: Record<string, any> }
+  security?: Record<string, string[]>[]
 }
 
 // Module-level shared symbol index: the upload flow registers the parsed files
@@ -88,6 +89,9 @@ export class OpenApiBuilder {
         }
       }
 
+      if (api.permitAll) {
+        operation.security = []
+      }
       if (!paths[path]) paths[path] = {}
       paths[path][method] = OpenApiBuilder.withResponses(operation, api, schemas)
     }
@@ -100,10 +104,66 @@ export class OpenApiBuilder {
       },
       paths,
     }
+    const security = OpenApiBuilder.deriveSecurity(parseResult)
+    const components: { schemas?: Record<string, any>; securitySchemes?: Record<string, any> } = {}
     if (Object.keys(schemas).length > 0) {
-      doc.components = { schemas }
+      components.schemas = schemas
+    }
+    if (security) {
+      components.securitySchemes = security.schemes
+      doc.security = security.security
+    }
+    if (Object.keys(components).length > 0) {
+      doc.components = components
     }
     return doc
+  }
+
+  /** Springdoc scheme types → OpenAPI securityScheme objects (default: bearer JWT). */
+  private static schemeObject(scheme: { name: string; type: string }): any {
+    if (scheme.type === 'apiKey') {
+      return { type: 'apiKey', name: scheme.name, in: 'header' }
+    }
+    if (scheme.type === 'oauth2') {
+      return { type: 'oauth2', flows: {} }
+    }
+    return { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }
+  }
+
+  /**
+   * Derive document-level security from Spring Security annotations. A springdoc
+   * @SecurityScheme/@SecurityRequirement overrides; otherwise any
+   * @PreAuthorize/@Secured/@RolesAllowed yields the default bearer-JWT scheme.
+   * No annotation anywhere → undefined (no securitySchemes key at all).
+   */
+  private static deriveSecurity(
+    parseResult: ParseResult
+  ): { schemes: Record<string, any>; security: Record<string, string[]>[] } | undefined {
+    const classes = parseResult.classes
+    const apis =
+      parseResult.apis.length > 0 ? parseResult.apis : classes.flatMap((c) => c.apis)
+    const customScheme =
+      classes.find((c) => c.securityScheme)?.securityScheme ??
+      apis.find((a) => a.securityScheme)?.securityScheme
+    const customRequirement =
+      classes.find((c) => c.securityRequirement)?.securityRequirement ??
+      apis.find((a) => a.securityRequirement)?.securityRequirement
+    const anySecured = classes.some((c) => c.secured) || apis.some((a) => a.secured)
+    if (!customScheme && !customRequirement && !anySecured) {
+      return undefined
+    }
+    if (customScheme) {
+      const name = customScheme.name || 'bearerAuth'
+      return {
+        schemes: { [name]: OpenApiBuilder.schemeObject(customScheme) },
+        security: [{ [customRequirement ?? name]: [] }],
+      }
+    }
+    const name = customRequirement ?? 'bearerAuth'
+    return {
+      schemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } },
+      security: [{ [name]: [] }],
+    }
   }
 
   /**

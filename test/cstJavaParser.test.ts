@@ -320,3 +320,46 @@ describe('cstJavaParser', () => {
     });
   });
 });
+
+describe('cstJavaParser — auth annotation capture (T9)', () => {
+  const parse = (methodAnnotations: string, classAnnotations = '@RestController'): ParseResult =>
+    parseJavaCst(
+      [
+        'package com.example.demo;',
+        'import org.springframework.web.bind.annotation.*;',
+        'import org.springframework.security.access.prepost.PreAuthorize;',
+        'import javax.annotation.security.PermitAll;',
+        'import org.springframework.security.access.annotation.Secured;',
+        classAnnotations,
+        'public class C {',
+        `  ${methodAnnotations}`,
+        '  @GetMapping("/x")',
+        '  public void m() { }',
+        '}',
+      ].join('\n'),
+      'file:///C.java',
+    )
+
+  it('captures @PreAuthorize on a method as secured', () => {
+    const result = parse('@PreAuthorize("hasRole(\'ADMIN\')")')
+    expect(result.apis[0].secured).toBe(true)
+  })
+
+  it('captures @PermitAll as permitAll', () => {
+    const result = parse('@PermitAll')
+    expect(result.apis[0].permitAll).toBe(true)
+  })
+
+  it('captures class-level @Secured on the class, not the api', () => {
+    const result = parse('', '@RestController @Secured("ROLE_ADMIN")')
+    expect(result.classes[0].secured).toBe(true)
+    expect(result.apis[0].secured).toBeUndefined()
+  })
+
+  it('no auth annotations → neither flag set', () => {
+    const result = parse('')
+    expect(result.apis[0].secured).toBeUndefined()
+    expect(result.apis[0].permitAll).toBeUndefined()
+    expect(result.classes[0].secured).toBeUndefined()
+  })
+})

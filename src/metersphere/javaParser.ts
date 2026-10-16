@@ -18,6 +18,10 @@ export interface ParsedApi {
   responseStatus?: number;
   responseHeaders?: { name: string; description?: string }[];
   extraResponses?: { code: string; description?: string }[];
+  secured?: boolean;
+  permitAll?: boolean;
+  securityScheme?: { name: string; type: string };
+  securityRequirement?: string;
 }
 
 export interface ParsedParameter {
@@ -36,6 +40,9 @@ export interface ParsedClass {
   isController: boolean;
   basePath: string;
   apis: ParsedApi[];
+  secured?: boolean;
+  securityScheme?: { name: string; type: string };
+  securityRequirement?: string;
 }
 
 export interface ParseResult {

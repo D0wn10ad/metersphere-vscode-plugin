@@ -425,3 +425,47 @@ describe('OpenApiBuilder — real responses (T8)', () => {
     resetUploadSymbolIndex()
   })
 })
+
+describe('OpenApiBuilder — security schemes (T9)', () => {
+  const buildWith = (apis: any[], classes: any[] = []): any =>
+    OpenApiBuilder.build({ classes, apis } as unknown as ParseResult, 'T9')
+
+  test('secured api → bearerAuth scheme + document security', () => {
+    const doc = buildWith([{ method: 'GET', path: '/s', fullPath: '/s', secured: true, parameters: [] }])
+    expect(doc.components?.securitySchemes?.bearerAuth).toEqual({
+      type: 'http',
+      scheme: 'bearer',
+      bearerFormat: 'JWT',
+    })
+    expect(doc.security).toEqual([{ bearerAuth: [] }])
+  })
+
+  test('permitAll operation gets an empty security array', () => {
+    const doc = buildWith([{ method: 'GET', path: '/o', fullPath: '/o', permitAll: true, parameters: [] }])
+    expect(doc.paths['/o'].get.security).toEqual([])
+  })
+
+  test('no auth annotation anywhere → no securitySchemes key', () => {
+    const doc = buildWith([{ method: 'GET', path: '/n', fullPath: '/n', parameters: [] }])
+    expect(doc.components?.securitySchemes).toBeUndefined()
+    expect(doc.security).toBeUndefined()
+  })
+
+  test('springdoc apiKey @SecurityScheme overrides (no bearer)', () => {
+    const doc = buildWith(
+      [{ method: 'GET', path: '/k', fullPath: '/k', parameters: [] }],
+      [{ name: 'C', isRestController: true, isController: true, basePath: '', securityScheme: { name: 'apiKeyAuth', type: 'apiKey' } }],
+    )
+    expect(doc.components?.securitySchemes?.apiKeyAuth).toEqual({ type: 'apiKey', name: 'apiKeyAuth', in: 'header' })
+    expect(doc.components?.securitySchemes?.bearerAuth).toBeUndefined()
+    expect(doc.security).toEqual([{ apiKeyAuth: [] }])
+  })
+
+  test('class-level secured counts even when the method is unannotated', () => {
+    const doc = buildWith(
+      [{ method: 'GET', path: '/c', fullPath: '/c', parameters: [] }],
+      [{ name: 'C', isRestController: true, isController: true, basePath: '', secured: true }],
+    )
+    expect(doc.components?.securitySchemes?.bearerAuth).toBeDefined()
+  })
+})
