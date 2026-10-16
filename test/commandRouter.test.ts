@@ -198,14 +198,44 @@ describe('CommandRouter scan handlers (single terminal scanComplete)', () => {
     expect(calls[0]).toEqual({ command: 'scanComplete', data: { files: [], error: 'No @RestController found' } })
   })
 
-  test('uploadFromFileExplorer folder failure: no project root -> exact terminal error', async () => {
-    ;(JavaFileScanner.findProjectRoot as jest.Mock).mockResolvedValue(null)
+  test('uploadFromFileExplorer folder -> folder-scoped scan via findJavaFilesInProject', async () => {
+    ;(JavaFileScanner.findJavaFilesInProject as jest.Mock).mockResolvedValue(['/proj/src/C.java'])
 
-    await commands.get('metersphere.uploadFromFileExplorer')?.([new FakeUri('/proj/docs')])
+    await commands.get('metersphere.uploadFromFileExplorer')?.([new FakeUri('/proj/src')])
 
     const calls = scanCompleteCalls()
     expect(calls).toHaveLength(1)
-    expect(calls[0]).toEqual({ command: 'scanComplete', data: { files: [], error: 'Could not find project root' } })
+    expect(calls[0]).toEqual({ command: 'scanComplete', data: { files: ['/proj/src/C.java'] } })
+    expect(JavaFileScanner.findJavaFilesInProject).toHaveBeenCalledWith('/proj/src', expect.any(Function))
+  })
+
+  test('uploadFromFileExplorer MIXED selection (file + folder) -> file passes through AND folder is scanned (TC-03)', async () => {
+    ;(JavaFileScanner.findJavaFilesInProject as jest.Mock).mockResolvedValue(['/proj/src/B.java', '/proj/src/A.java'])
+
+    await commands.get('metersphere.uploadFromFileExplorer')?.([
+      new FakeUri('/proj/src/A.java'),
+      new FakeUri('/proj/src'),
+    ])
+
+    const calls = scanCompleteCalls()
+    expect(calls).toHaveLength(1)
+    const files = (calls[0].data as { files: unknown[] }).files
+    expect(files).toEqual(['/proj/src/A.java', '/proj/src/B.java'])
+    expect(JavaFileScanner.findJavaFilesInProject).toHaveBeenCalledTimes(1)
+    expect(JavaFileScanner.findJavaFilesInProject).toHaveBeenCalledWith('/proj/src', expect.any(Function))
+  })
+
+  test('uploadFromFileExplorer MIXED selection with duplicate results -> union deduped', async () => {
+    ;(JavaFileScanner.findJavaFilesInProject as jest.Mock).mockResolvedValue(['/proj/src/A.java'])
+
+    await commands.get('metersphere.uploadFromFileExplorer')?.([
+      new FakeUri('/proj/src/A.java'),
+      new FakeUri('/proj/src'),
+    ])
+
+    const calls = scanCompleteCalls()
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toEqual({ command: 'scanComplete', data: { files: ['/proj/src/A.java'] } })
   })
 
   test('uploadFromFileExplorer no uris: exactly one terminal scanComplete ("No files selected")', async () => {

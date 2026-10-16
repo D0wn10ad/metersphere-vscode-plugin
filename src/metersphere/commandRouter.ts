@@ -306,31 +306,28 @@ export class CommandRouter {
                 .map(u => (u as { fsPath?: string }).fsPath || u.path)
                 .filter((p): p is string => typeof p === 'string')
             )]
-            const isFile = filePaths[0].endsWith('.java')
-            let filesToUpload: string[] = []
-
-            if (isFile) {
-              filesToUpload = filePaths
-            } else {
-              const scanPath = filePaths[0]
-              const projectRoot = await JavaFileScanner.findProjectRoot(scanPath)
-              if (!projectRoot) {
-                throw new Error('Could not find project root')
+            // Classify EACH selected URI independently: .java files upload
+            // directly, everything else is scanned recursively as a folder
+            // (TC-03: the first URI must not decide for the whole selection).
+            const filesToUpload = new Set<string>()
+            for (const selectedPath of filePaths) {
+              if (selectedPath.endsWith('.java')) {
+                filesToUpload.add(selectedPath)
+                continue
               }
-              const searchPaths = JavaFileScanner.getCommonProjectPaths(projectRoot)
-              for (const searchPath of searchPaths) {
-                const found = await JavaFileScanner.findJavaFilesInProject(searchPath, (msg: string, count: number) => {
-                  SidebarView.postMessage({ command: 'uploadProgress', data: { message: `${msg} (${count})` } })
-                })
-                filesToUpload.push(...found)
+              const found = await JavaFileScanner.findJavaFilesInProject(selectedPath, (msg: string, count: number) => {
+                SidebarView.postMessage({ command: 'uploadProgress', data: { message: `${msg} (${count})` } })
+              })
+              for (const file of found) {
+                filesToUpload.add(file)
               }
-              filesToUpload = [...new Set(filesToUpload)]
             }
 
-            if (filesToUpload.length === 0) {
+            const result = [...filesToUpload]
+            if (result.length === 0) {
               throw new Error('No @RestController found')
             }
-            return filesToUpload
+            return result
           },
           post: SidebarView.postMessage,
           label: 'fileExplorer',
