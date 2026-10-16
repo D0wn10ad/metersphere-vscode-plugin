@@ -239,4 +239,72 @@ describe('applyValidation', () => {
       expect(out).not.toBe(input)
     })
   })
+
+  describe('regressions: Size string form, NotEmpty arrays, Min/Max intersect', () => {
+    test('@Size("3") numeric STRING form -> exactly 3 (min+max)', () => {
+      expect(applyValidation({ type: 'string' }, [c('Size', '3')], 'String')).toEqual({
+        type: 'string',
+        minLength: 3,
+        maxLength: 3,
+      })
+    })
+
+    test('@Size(3) numeric form unchanged -> exactly 3', () => {
+      expect(applyValidation({ type: 'string' }, [c('Size', 3)], 'String')).toEqual({
+        type: 'string',
+        minLength: 3,
+        maxLength: 3,
+      })
+    })
+
+    test('@NotEmpty on array schema -> minItems: 1 (not minLength)', () => {
+      expect(applyValidation({ type: 'array', items: {} }, [c('NotEmpty')], 'List<String>')).toEqual({
+        type: 'array',
+        items: {},
+        nullable: false,
+        minItems: 1,
+      })
+    })
+
+    test('@NotEmpty on untyped collection javaType -> minItems: 1', () => {
+      expect(applyValidation({}, [c('NotEmpty')], 'Set<String>')).toEqual({ nullable: false, minItems: 1 })
+    })
+
+    test('@NotEmpty on string -> minLength: 1 (unchanged)', () => {
+      expect(applyValidation({ type: 'string' }, [c('NotEmpty')], 'String')).toEqual({
+        type: 'string',
+        nullable: false,
+        minLength: 1,
+      })
+    })
+
+    test('@Min(1) then @Min(5) -> tighter minimum 5 (intersect, not overwrite)', () => {
+      expect(applyValidation({ type: 'integer' }, [c('Min', 1), c('Min', 5)], 'int')).toEqual({
+        type: 'integer',
+        minimum: 5,
+      })
+    })
+
+    test('@Max(10) then @Max(3) -> tighter maximum 3 (intersect, not overwrite)', () => {
+      expect(applyValidation({ type: 'integer' }, [c('Max', 10), c('Max', 3)], 'int')).toEqual({
+        type: 'integer',
+        maximum: 3,
+      })
+    })
+
+    test('base schema minimum intersects with @Min', () => {
+      expect(applyValidation({ type: 'integer', minimum: 5 }, [c('Min', 1)], 'int')).toEqual({
+        type: 'integer',
+        minimum: 5,
+      })
+    })
+
+    test('@Min(1) @Max(10) together -> both bounds kept', () => {
+      expect(applyValidation({ type: 'integer' }, [c('Min', 1), c('Max', 10)], 'int')).toEqual({
+        type: 'integer',
+        minimum: 1,
+        maximum: 10,
+      })
+    })
+  })
 })

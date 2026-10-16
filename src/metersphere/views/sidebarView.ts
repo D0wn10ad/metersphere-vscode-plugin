@@ -316,9 +316,7 @@ export class SidebarView {
 
       SidebarView.postMessage({ command: 'uploadProgress', data: { message: `Converting to ${isOpenApi ? 'OpenAPI' : 'Postman'} format...` } })
 
-      const collectionName = uploadData.files.length === 1
-        ? uploadData.files[0].split(/[/\\]/).pop()?.replace('.java', '') || 'Java API'
-        : 'Java APIs'
+      const collectionName = SyncService.resolveCollectionName(uploadData.exportName, uploadData.files)
 
       let jsonContent: string
       if (isOpenApi) {
@@ -491,6 +489,12 @@ export class SidebarView {
       }
       const headers = SettingsManager.buildAuthHeaders('application/json')
       const resp = await fetch(`${msUrl}/api/environment/list/${projectId}`, { headers })
+      if (!resp.ok) {
+        const bodyText = await resp.text().catch(() => '')
+        throw new Error(
+          `Environment request failed: ${resp.status} ${resp.statusText}${bodyText ? ` - ${bodyText.substring(0, 200)}` : ''}`
+        )
+      }
       const json = await resp.json()
       const environments = json.success && json.data ? json.data : []
       SidebarView.postMessage({ command: 'environmentsLoaded', data: { environments, projectId } }, viewId)

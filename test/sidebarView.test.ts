@@ -355,6 +355,65 @@ describe('SidebarView.loadProjectModules (auto-discovery, ported from main)', ()
       expect.objectContaining({ command: 'loadProjectError', data: expect.objectContaining({ message: expect.stringContaining('No workspace selected') }) })
     );
   });
+
+  describe('loadEnvironments (raw fetch, resp.ok guarded)', () => {
+    let postSpy: jest.SpyInstance;
+    let errorSpy: jest.SpyInstance;
+    const realFetch = global.fetch;
+
+    beforeEach(() => {
+      postSpy = jest.spyOn(SidebarView, 'postMessage').mockImplementation(() => {});
+      errorSpy = jest.spyOn(DebugLogger, 'error');
+      setSetting('metersphere.msUrl', 'http://localhost:8081');
+      setSetting('metersphere.accessKey', 'ak-test-12345678');
+      setSetting('metersphere.secretKey', 'sk-test-12345678');
+      setSetting('metersphere.projectId', 'proj-1');
+    });
+
+    afterEach(() => {
+      postSpy.mockRestore();
+      errorSpy.mockRestore();
+      global.fetch = realFetch;
+      jest.clearAllMocks();
+    });
+
+    it('failure: HTTP 500 HTML body -> posts environmentsError with a clean message (no JSON parse error)', async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        statusText: 'Internal Server Error',
+        text: async () => '<html>Server Error</html>',
+      });
+
+      await (SidebarView as any).loadEnvironments('view-1');
+
+      expect(postSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          command: 'environmentsError',
+          data: expect.objectContaining({ message: expect.stringContaining('Environment request failed: 500') }),
+        }),
+        'view-1'
+      );
+    });
+
+    it('happy: ok response -> posts environmentsLoaded with the environment list', async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, data: [{ id: 'env-1', name: 'Dev' }] }),
+      });
+
+      await (SidebarView as any).loadEnvironments('view-1');
+
+      expect(postSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          command: 'environmentsLoaded',
+          data: expect.objectContaining({ environments: [{ id: 'env-1', name: 'Dev' }], projectId: 'proj-1' }),
+        }),
+        'view-1'
+      );
+    });
+  });
 });
 
 });

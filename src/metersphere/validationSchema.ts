@@ -36,7 +36,8 @@ function toNumber(value: string | number | undefined): number | undefined {
 /**
  * Parse the compact `@Size` value produced by the parser:
  * `"1-10"` (min+max), `"2+"` (min only), `"0-10"` (max only; min 0 is the
- * JSR-303 default and therefore dropped), or a plain number (`@Size(3)` = exactly 3).
+ * JSR-303 default and therefore dropped), a plain number or numeric string
+ * (`@Size(3)` / `@Size("3")` = exactly 3).
  */
 function parseSize(value: string | number | undefined): { min?: number; max?: number } {
   if (typeof value === 'number' && Number.isFinite(value)) {
@@ -44,6 +45,11 @@ function parseSize(value: string | number | undefined): { min?: number; max?: nu
   }
   if (typeof value !== 'string') {
     return {};
+  }
+  const plain = value.match(/^(\d+)$/);
+  if (plain) {
+    const n = Number(plain[1]);
+    return { min: n, max: n };
   }
   const range = value.match(/^(\d+)-(\d+)$/);
   if (range) {
@@ -70,7 +76,8 @@ function parseSize(value: string | number | undefined): { min?: number; max?: nu
  * Mapping:
  * - NotNull/NotBlank/NotEmpty -> `nullable:false` (+ `minLength:1` for strings)
  * - Size -> `minLength`/`maxLength` (string) or `minItems`/`maxItems` (array/collection)
- * - Min/Max -> `minimum`/`maximum` ONLY when the schema type is integer/number
+ * - Min/Max -> `minimum`/`maximum` ONLY when the schema type is integer/number;
+ *   repeated bounds are intersected (the tighter value wins)
  * - Pattern -> `pattern` (string or untyped schemas)
  * - Email -> `format:'email'` (string or untyped schemas)
  *
@@ -111,6 +118,10 @@ export function applyValidation(
         if (isString) {
           result.minLength = Math.max(result.minLength ?? 0, 1);
         }
+        // @NotEmpty also applies to collections/arrays: at least one element.
+        if (constraint.type === 'NotEmpty' && isArray) {
+          result.minItems = Math.max(result.minItems ?? 0, 1);
+        }
         break;
       }
       case 'Size': {
@@ -135,14 +146,14 @@ export function applyValidation(
       case 'Min': {
         const n = toNumber(constraint.value);
         if (isNumeric && n !== undefined) {
-          result.minimum = n;
+          result.minimum = result.minimum !== undefined ? Math.max(result.minimum, n) : n;
         }
         break;
       }
       case 'Max': {
         const n = toNumber(constraint.value);
         if (isNumeric && n !== undefined) {
-          result.maximum = n;
+          result.maximum = result.maximum !== undefined ? Math.min(result.maximum, n) : n;
         }
         break;
       }
