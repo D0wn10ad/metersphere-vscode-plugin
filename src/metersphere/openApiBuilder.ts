@@ -40,6 +40,7 @@ export class OpenApiBuilder {
   static build(parseResult: ParseResult, title: string, version?: string): OpenApiDocument {
     const paths: Record<string, Record<string, any>> = {}
     const schemas: Record<string, any> = {}
+    const operationIdCounts = new Map<string, number>()
 
     const apis = parseResult.apis.length > 0
       ? parseResult.apis
@@ -52,6 +53,13 @@ export class OpenApiBuilder {
       const operation: any = {
         summary: api.summary || `${api.method} ${api.path}`,
         parameters: [],
+      }
+      const baseId = api.methodName || `${method}_${path.replace(/[^a-zA-Z0-9]/g, '_')}`
+      const seen = operationIdCounts.get(baseId) ?? 0
+      operationIdCounts.set(baseId, seen + 1)
+      operation.operationId = seen === 0 ? baseId : `${baseId}_${seen + 1}`
+      if (api.className) {
+        operation.tags = [api.className]
       }
 
       if (api.parameters) {
@@ -273,6 +281,9 @@ export class OpenApiBuilder {
 
   /** Expand a ResolvedDto into `properties` (each field through fieldSchema). */
   private static expandedSchema(dto: ResolvedDto, schemas: Record<string, any>): any {
+    if (dto.kind === 'enum') {
+      return { type: 'string', enum: dto.values ?? [] }
+    }
     const properties: Record<string, any> = {}
     const fields = dto.fields ?? []
     for (const field of fields) {

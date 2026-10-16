@@ -254,6 +254,13 @@ function parseMethod(md: CstNode, source: string, basePath: string, javadoc: Jav
   if (returnType !== undefined) {
     api.returnType = returnType;
   }
+  const mdec = methodHeader ? findFirst(methodHeader, 'methodDeclarator') : undefined;
+  const methodName = mdec
+    ? ((mdec.children['Identifier']?.[0] as CstToken | undefined)?.image)
+    : undefined;
+  if (methodName) {
+    api.methodName = methodName;
+  }
   const statusAnn = anns.find((a) => a.read.name === 'ResponseStatus');
   if (statusAnn) {
     const raw =
@@ -426,6 +433,7 @@ export function parseJavaCst(source: string, uri: string): ParseResult {
       for (const md of findAll(classBody, 'methodDeclaration')) {
         const api = parseMethod(md, source, basePath, javadoc);
         if (api) {
+          api.className = name;
           parsedClass.apis.push(api);
           result.apis.push(api);
         }

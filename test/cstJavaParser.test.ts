@@ -363,3 +363,22 @@ describe('cstJavaParser — auth annotation capture (T9)', () => {
     expect(result.classes[0].secured).toBeUndefined()
   })
 })
+
+describe('cstJavaParser — methodName/className capture (T10)', () => {
+  it('captures the Java method name and owning class name', () => {
+    const result = parseJavaCst(
+      [
+        'package com.example.demo;',
+        'import org.springframework.web.bind.annotation.*;',
+        '@RestController',
+        'public class TaskController {',
+        '  @GetMapping("/x")',
+        '  public Response<X> listAll() { return null; }',
+        '}',
+      ].join('\n'),
+      'file:///TaskController.java',
+    )
+    expect(result.apis[0].methodName).toBe('listAll')
+    expect(result.apis[0].className).toBe('TaskController')
+  })
+})

@@ -469,3 +469,106 @@ describe('OpenApiBuilder — security schemes (T9)', () => {
     expect(doc.components?.securitySchemes?.bearerAuth).toBeDefined()
   })
 })
+
+describe('OpenApiBuilder — operationId, tags, enum/record schemas (T10)', () => {
+  afterEach(() => {
+    resetUploadSymbolIndex()
+  })
+
+  test('enum-typed body field emits a $ref to a {type:string, enum:[...]} schema', () => {
+    resetUploadSymbolIndex()
+    const idx = getUploadSymbolIndex()
+    idx.register('public enum Status { ACTIVE, INACTIVE }', 'file:///Status.java')
+    idx.register(
+      'public class TaskDto { private Status status; private String title; }',
+      'file:///TaskDto.java',
+    )
+    const doc = OpenApiBuilder.build(
+      {
+        classes: [],
+        apis: [
+          { method: 'POST', path: '/t', fullPath: '/t', parameters: [{ name: 'body', in: 'body', type: 'TaskDto' }] },
+        ],
+      } as unknown as ParseResult,
+      'T10',
+    )
+    const status = doc.components?.schemas?.Status
+    expect(status).toEqual({ type: 'string', enum: ['ACTIVE', 'INACTIVE'] })
+    const bodySchema = doc.paths['/t'].post.requestBody.content['application/json'].schema
+    expect(bodySchema.$ref).toBe('#/components/schemas/TaskDto')
+    expect(doc.components?.schemas?.TaskDto.properties.status.$ref).toBe('#/components/schemas/Status')
+  })
+
+  test('every operation gets operationId and tags from its class', () => {
+    const doc = OpenApiBuilder.build(
+      {
+        classes: [],
+        apis: [
+          { method: 'GET', path: '/a', fullPath: '/a', methodName: 'listAll', className: 'TaskController', parameters: [] },
+        ],
+      } as unknown as ParseResult,
+      'T10',
+    )
+    const op = doc.paths['/a'].get
+    expect(op.operationId).toBe('listAll')
+    expect(op.tags).toEqual(['TaskController'])
+  })
+
+  test('colliding method names get unique operationIds', () => {
+    const doc = OpenApiBuilder.build(
+      {
+        classes: [],
+        apis: [
+          { method: 'POST', path: '/a', fullPath: '/a', methodName: 'create', className: 'AController', parameters: [] },
+          { method: 'POST', path: '/b', fullPath: '/b', methodName: 'create', className: 'BController', parameters: [] },
+        ],
+      } as unknown as ParseResult,
+      'T10',
+    )
+    const ids = [doc.paths['/a'].post.operationId, doc.paths['/b'].post.operationId]
+    expect(new Set(ids).size).toBe(2)
+    expect(ids[0]).toBe('create')
+    expect(ids[1]).toBe('create_2')
+  })
+
+  test('two enums with the same simple name: last-registered-wins, schema well-formed', () => {
+    resetUploadSymbolIndex()
+    const idx = getUploadSymbolIndex()
+    idx.register('public enum State { ON, OFF }', 'file:///a/State.java')
+    idx.register('public enum State { OPEN, CLOSED }', 'file:///b/State.java')
+    const doc = OpenApiBuilder.build(
+      {
+        classes: [],
+        apis: [
+          { method: 'GET', path: '/s', fullPath: '/s', returnType: 'State', parameters: [] },
+        ],
+      } as unknown as ParseResult,
+      'T10',
+    )
+    const schema = doc.components?.schemas?.State
+    expect(schema).toBeDefined()
+    expect(schema.type).toBe('string')
+    expect(Array.isArray(schema.enum)).toBe(true)
+    expect(schema.enum.length).toBeGreaterThan(0)
+  })
+
+  test('record DTO expands to an object schema from its components', () => {
+    resetUploadSymbolIndex()
+    getUploadSymbolIndex().register('public record Point(int x, String label) {}', 'file:///Point.java')
+    const doc = OpenApiBuilder.build(
+      {
+        classes: [],
+        apis: [
+          { method: 'GET', path: '/p', fullPath: '/p', returnType: 'Point', parameters: [] },
+        ],
+      } as unknown as ParseResult,
+      'T10',
+    )
+    const point = doc.components?.schemas?.Point
+    expect(point).toBeDefined()
+    expect(point.properties).toEqual({
+      x: { type: 'integer' },
+      label: { type: 'string' },
+    })
+  })
+})

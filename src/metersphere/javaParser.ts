@@ -22,6 +22,8 @@ export interface ParsedApi {
   permitAll?: boolean;
   securityScheme?: { name: string; type: string };
   securityRequirement?: string;
+  methodName?: string;
+  className?: string;
 }
 
 export interface ParsedParameter {
