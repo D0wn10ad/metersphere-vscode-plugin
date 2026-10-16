@@ -94,6 +94,25 @@ describe('uploadParsing', () => {
     expect(dto!.fields.map((f) => f.name)).toEqual(['name', 'count']);
     resetUploadSymbolIndex();
   });
+
+  it('cross-upload isolation: a type registered by upload 1 does NOT resolve during upload 2', async () => {
+    resetUploadSymbolIndex();
+    const fooSrc = [
+      'package com.example.dto;',
+      'public class Foo {',
+      '  private String name;',
+      '}',
+    ].join('\n');
+
+    // Upload 1 declares Foo (no API in the file — registration is per-file).
+    await parseUploadedFiles(['file:///up1/Foo.java'], async () => fooSrc, true);
+    expect(getUploadSymbolIndex().resolveSync('Foo')).toBeDefined();
+
+    // Upload 2 is an unrelated controller that never declares Foo.
+    await parseUploadedFiles(['file:///up2/C.java'], async () => controllerSrc('/iso'), true);
+    expect(getUploadSymbolIndex().resolveSync('Foo')).toBeUndefined();
+    resetUploadSymbolIndex();
+  });
 });
 
 describe('uploadParsing — async DTO pre-pass (T11)', () => {

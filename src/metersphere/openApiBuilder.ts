@@ -143,6 +143,12 @@ export class OpenApiBuilder {
    * @SecurityScheme/@SecurityRequirement overrides; otherwise any
    * @PreAuthorize/@Secured/@RolesAllowed yields the default bearer-JWT scheme.
    * No annotation anywhere → undefined (no securitySchemes key at all).
+   *
+   * OpenAPI 3 forbids a security requirement referencing an unregistered scheme,
+   * so the requirement key is derived once and every key it can produce is
+   * guaranteed to be registered: a @SecurityRequirement(name="X") with no matching
+   * @SecurityScheme gets X registered with the default bearer-JWT shape, and a
+   * custom scheme whose name differs from the requirement gets both registered.
    */
   private static deriveSecurity(
     parseResult: ParseResult
@@ -160,17 +166,18 @@ export class OpenApiBuilder {
     if (!customScheme && !customRequirement && !anySecured) {
       return undefined
     }
+    const schemeKey = customScheme?.name || 'bearerAuth'
+    const requirementKey = customRequirement ?? schemeKey
+    const schemes: Record<string, any> = {}
     if (customScheme) {
-      const name = customScheme.name || 'bearerAuth'
-      return {
-        schemes: { [name]: OpenApiBuilder.schemeObject(customScheme) },
-        security: [{ [customRequirement ?? name]: [] }],
-      }
+      schemes[schemeKey] = OpenApiBuilder.schemeObject(customScheme)
     }
-    const name = customRequirement ?? 'bearerAuth'
+    if (!schemes[requirementKey]) {
+      schemes[requirementKey] = { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }
+    }
     return {
-      schemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } },
-      security: [{ [name]: [] }],
+      schemes,
+      security: [{ [requirementKey]: [] }],
     }
   }
 

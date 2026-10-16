@@ -87,6 +87,9 @@ export async function parseUploadedFiles(
 ): Promise<UploadedParse> {
   const result: ParseResult = { classes: [], apis: [] };
   const symbolIndex = getUploadSymbolIndex();
+  // Start each upload from a clean index so a type registered (or resolved) by a
+  // prior upload cannot leak into this one.
+  symbolIndex.clearAll();
   for (const filePath of filePaths) {
     const code = await readText(filePath);
     try {

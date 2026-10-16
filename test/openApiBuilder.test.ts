@@ -470,6 +470,116 @@ describe('OpenApiBuilder — security schemes (T9)', () => {
   })
 })
 
+describe('OpenApiBuilder — security requirement keys are always registered schemes', () => {
+  const buildWith = (apis: any[], classes: any[] = []): any =>
+    OpenApiBuilder.build({ classes, apis } as unknown as ParseResult, 'sec')
+
+  /**
+   * Document-level sanity: every key appearing in doc.security AND in any
+   * operation.security must exist in components.securitySchemes (OpenAPI 3
+   * forbids referencing an unregistered security scheme).
+   */
+  const expectSecurityInvariant = (doc: any): void => {
+    const registered = Object.keys(doc.components?.securitySchemes ?? {})
+    const keysOf = (reqs: unknown): string[] =>
+      Array.isArray(reqs) ? reqs.flatMap((r) => (r && typeof r === 'object' ? Object.keys(r) : [])) : []
+    for (const key of keysOf(doc.security)) {
+      expect(registered).toContain(key)
+    }
+    for (const pathItem of Object.values(doc.paths ?? {}) as any[]) {
+      for (const op of Object.values(pathItem ?? {}) as any[]) {
+        for (const key of keysOf(op?.security)) {
+          expect(registered).toContain(key)
+        }
+      }
+    }
+  }
+
+  test('@SecurityRequirement(name="X") without @SecurityScheme registers X instead of dangling', () => {
+    const doc = buildWith([
+      { method: 'GET', path: '/x', fullPath: '/x', securityRequirement: 'X', parameters: [] },
+    ])
+    expect(doc.security).toEqual([{ X: [] }])
+    expect(doc.components?.securitySchemes?.X).toEqual({
+      type: 'http',
+      scheme: 'bearer',
+      bearerFormat: 'JWT',
+    })
+    expectSecurityInvariant(doc)
+  })
+
+  test('@SecurityScheme(name=apiKeyAuth) + @SecurityRequirement(name=otherAuth) registers BOTH keys', () => {
+    const doc = buildWith(
+      [{ method: 'GET', path: '/k', fullPath: '/k', parameters: [] }],
+      [
+        {
+          name: 'C',
+          isRestController: true,
+          isController: true,
+          basePath: '',
+          securityScheme: { name: 'apiKeyAuth', type: 'apiKey' },
+          securityRequirement: 'otherAuth',
+        },
+      ],
+    )
+    expect(doc.security).toEqual([{ otherAuth: [] }])
+    expect(doc.components?.securitySchemes?.apiKeyAuth).toEqual({
+      type: 'apiKey',
+      name: 'apiKeyAuth',
+      in: 'header',
+    })
+    expect(doc.components?.securitySchemes?.otherAuth).toEqual({
+      type: 'http',
+      scheme: 'bearer',
+      bearerFormat: 'JWT',
+    })
+    expectSecurityInvariant(doc)
+  })
+
+  test('default bearer case is unchanged: security=[{bearerAuth:[]}] + schemes.bearerAuth', () => {
+    const doc = buildWith([{ method: 'GET', path: '/s', fullPath: '/s', secured: true, parameters: [] }])
+    expect(doc.security).toEqual([{ bearerAuth: [] }])
+    expect(doc.components?.securitySchemes?.bearerAuth).toEqual({
+      type: 'http',
+      scheme: 'bearer',
+      bearerFormat: 'JWT',
+    })
+    expectSecurityInvariant(doc)
+  })
+
+  test('invariant holds across generated documents (doc-level and operation-level security)', () => {
+    const securedOp = { method: 'GET', path: '/s', fullPath: '/s', secured: true, parameters: [] }
+    const permitAllOp = { method: 'GET', path: '/o', fullPath: '/o', permitAll: true, parameters: [] }
+    const requirementOnlyOp = {
+      method: 'POST',
+      path: '/r',
+      fullPath: '/r',
+      securityRequirement: 'signedAuth',
+      parameters: [],
+    }
+    const apiKeyClass = {
+      name: 'C',
+      isRestController: true,
+      isController: true,
+      basePath: '',
+      securityScheme: { name: 'apiKeyAuth', type: 'apiKey' },
+      securityRequirement: 'otherAuth',
+    }
+    const docs = [
+      buildWith([securedOp]),
+      buildWith([permitAllOp, securedOp]),
+      buildWith([requirementOnlyOp]),
+      buildWith([{ method: 'GET', path: '/k', fullPath: '/k', parameters: [] }], [apiKeyClass]),
+      buildWith([{ method: 'GET', path: '/n', fullPath: '/n', parameters: [] }]),
+    ]
+    for (const doc of docs) {
+      expectSecurityInvariant(doc)
+    }
+    const withSecurity = docs.filter((d) => Array.isArray(d.security) && d.security.length > 0)
+    expect(withSecurity.length).toBe(4)
+  })
+})
+
 describe('OpenApiBuilder — operationId, tags, enum/record schemas (T10)', () => {
   afterEach(() => {
     resetUploadSymbolIndex()

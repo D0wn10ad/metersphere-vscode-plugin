@@ -185,6 +185,16 @@ export class ProjectSymbolIndex {
     this.cache.clear();
   }
 
+  /**
+   * Drop every async-resolved entry AND every registered local type. Called at
+   * the start of each upload so neither a cached resolution nor a type registered
+   * by a PRIOR upload can leak into the current one.
+   */
+  clearAll(): void {
+    this.cache.clear();
+    this.localTypes.clear();
+  }
+
   /** Time-boxed LSP symbol-provider resolution. A rejected call falls through. */
   private async resolveViaLsp(typeName: string): Promise<ResolvedDto | undefined> {
     try {
