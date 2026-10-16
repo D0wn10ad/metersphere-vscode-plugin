@@ -169,12 +169,20 @@ export class ProjectSymbolIndex {
     return undefined;
   }
 
-  /**
-   * Synchronous lookup through registration + cache ONLY (no LSP, no scan) — for
+  /** Synchronous lookup through registration + cache ONLY (no LSP, no scan) — for
    * the sync OpenApiBuilder.build path, whose signature cannot await.
    */
   resolveSync(typeName: string): ResolvedDto | undefined {
     return this.cache.get(typeName) ?? this.localTypes.get(typeName);
+  }
+
+  /**
+   * Drop every async-resolved entry. Called at the start of each upload's DTO
+   * pre-pass so a DTO resolved during a PRIOR upload cannot shadow the freshly
+   * registered source of the current one (resolveSync reads cache first).
+   */
+  clearResolvedCache(): void {
+    this.cache.clear();
   }
 
   /** Time-boxed LSP symbol-provider resolution. A rejected call falls through. */

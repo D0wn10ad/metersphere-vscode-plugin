@@ -260,9 +260,14 @@ export class SidebarView {
     SidebarView.postMessage({ command: 'uploadProgress', data: { message: 'Parsing Java files...' } })
     
     try {
+      // Format is read BEFORE parsing so the OpenAPI-only DTO pre-pass can be
+      // gated inside parseUploadedFiles (never runs for Postman exports).
+      const format = SettingsManager.getExportFormat()
+      const isOpenApi = format === 'swagger3'
       const parsed = await parseUploadedFiles(
         uploadData.files,
         async (p) => (await vscode.workspace.openTextDocument(p)).getText(),
+        isOpenApi,
       )
       let allApis = parsed.result
 
@@ -285,9 +290,6 @@ export class SidebarView {
           // Javadoc enhancement failed, continue without it
         }
       }
-
-      const format = SettingsManager.getExportFormat()
-      const isOpenApi = format === 'swagger3'
 
       SidebarView.postMessage({ command: 'uploadProgress', data: { message: `Converting to ${isOpenApi ? 'OpenAPI' : 'Postman'} format...` } })
 

@@ -7,7 +7,7 @@
  */
 
 import { parseUploadedFiles } from '../src/metersphere/uploadParsing';
-import { getUploadSymbolIndex, resetUploadSymbolIndex } from '../src/metersphere/openApiBuilder';
+import { OpenApiBuilder, getUploadSymbolIndex, resetUploadSymbolIndex } from '../src/metersphere/openApiBuilder';
 
 const controllerSrc = (path: string): string =>
   [
@@ -93,5 +93,92 @@ describe('uploadParsing', () => {
     expect(dto).toBeDefined();
     expect(dto!.fields.map((f) => f.name)).toEqual(['name', 'count']);
     resetUploadSymbolIndex();
+  });
+});
+
+describe('uploadParsing — async DTO pre-pass (T11)', () => {
+  const controllerWithExternal = [
+    'package com.example.demo;',
+    'import org.springframework.web.bind.annotation.*;',
+    '@RestController',
+    'public class C {',
+    '  @PostMapping("/e")',
+    '  public ExternalDto h(@RequestBody ExternalDto dto) { return dto; }',
+    '}',
+  ].join('\n');
+
+  const setSymbolMock = (documents: Record<string, string>, calls: string[]): void => {
+    (globalThis as unknown as { __vscodeMock?: unknown }).__vscodeMock = {
+      extensions: [],
+      documents,
+      delayMs: 0,
+      symbols: (query: string) => {
+        calls.push(query);
+        const uri = Object.keys(documents).find((u) => documents[u].includes(`class ${query}`) || documents[u].includes(`enum ${query}`));
+        return uri ? [{ name: query, kind: 'Class', location: { uri } }] : [];
+      },
+    };
+  };
+
+  afterEach(() => {
+    resetUploadSymbolIndex();
+    (globalThis as unknown as { __vscodeMock?: unknown }).__vscodeMock = undefined;
+  });
+
+  it('pre-pass resolves a DTO defined in a NON-uploaded file → built doc contains its $ref', async () => {
+    const calls: string[] = [];
+    setSymbolMock(
+      { 'file:///ext/ExternalDto.java': 'package ext;\npublic class ExternalDto { private String name; }' },
+      calls,
+    );
+    resetUploadSymbolIndex();
+    const { result } = await parseUploadedFiles(['file:///virtual/c.java'], async () => controllerWithExternal, true);
+    expect(calls).toContain('ExternalDto');
+    const doc = OpenApiBuilder.build(result, 'T11');
+    const schema = doc.paths['/e'].post.requestBody.content['application/json'].schema;
+    expect(schema.$ref).toBe('#/components/schemas/ExternalDto');
+    expect(doc.components?.schemas?.ExternalDto.properties.name).toEqual({ type: 'string' });
+  });
+
+  it('provider unavailable → upload completes, payload falls back to a generic object', async () => {
+    (globalThis as unknown as { __vscodeMock?: unknown }).__vscodeMock = {
+      extensions: [],
+      documents: {},
+      delayMs: 0,
+      symbols: () => [],
+    };
+    resetUploadSymbolIndex();
+    const { result } = await parseUploadedFiles(['file:///virtual/c.java'], async () => controllerWithExternal, true);
+    const doc = OpenApiBuilder.build(result, 'T11');
+    const schema = doc.paths['/e'].post.requestBody.content['application/json'].schema;
+    expect(schema).toEqual({ type: 'object' });
+  });
+
+  it('Postman path (isOpenApi=false) does NOT invoke the pre-pass', async () => {
+    const calls: string[] = [];
+    setSymbolMock(
+      { 'file:///ext/ExternalDto.java': 'package ext;\npublic class ExternalDto { private String name; }' },
+      calls,
+    );
+    resetUploadSymbolIndex();
+    await parseUploadedFiles(['file:///virtual/c.java'], async () => controllerWithExternal, false);
+    expect(calls).toEqual([]);
+  });
+
+  it('stale-cache guard: upload B re-registering modified source yields a FRESH schema', async () => {
+    const calls: string[] = [];
+    const v1 = 'package ext;\npublic class ExternalDto { private String name; }';
+    const v2 = 'package ext;\npublic class ExternalDto { private String name; private int age; }';
+    setSymbolMock({ 'file:///ext/ExternalDto.java': v1 }, calls);
+    resetUploadSymbolIndex();
+    const uploadA = await parseUploadedFiles(['file:///virtual/c.java'], async () => controllerWithExternal, true);
+    let doc = OpenApiBuilder.build(uploadA.result, 'T11');
+    expect(doc.components?.schemas?.ExternalDto.properties.age).toBeUndefined();
+
+    // Upload B: the external file changed on disk
+    setSymbolMock({ 'file:///ext/ExternalDto.java': v2 }, calls);
+    const uploadB = await parseUploadedFiles(['file:///virtual/c.java'], async () => controllerWithExternal, true);
+    doc = OpenApiBuilder.build(uploadB.result, 'T11');
+    expect(doc.components?.schemas?.ExternalDto.properties.age).toEqual({ type: 'integer' });
   });
 });
