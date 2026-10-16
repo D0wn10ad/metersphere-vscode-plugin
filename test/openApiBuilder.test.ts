@@ -285,3 +285,54 @@ describe('OpenApiBuilder', () => {
     })
   })
 })
+
+describe('OpenApiBuilder — enriched parameters (T7)', () => {
+  const buildWith = (parameters: any[]): any =>
+    OpenApiBuilder.build(
+      {
+        classes: [],
+        apis: [{ method: 'GET', path: '/p', fullPath: '/p', summary: 's', parameters }],
+      } as unknown as ParseResult,
+      'T7',
+    )
+
+  test('numeric default is coerced and validation keywords land in schema', () => {
+    const doc = buildWith([
+      {
+        name: 'page',
+        in: 'query',
+        required: false,
+        type: 'int',
+        defaultValue: '1',
+        validation: [{ type: 'Min', value: 1 }],
+      },
+    ])
+    const p = doc.paths['/p'].get.parameters[0]
+    expect(p.required).toBe(false)
+    expect(p.schema).toEqual({ type: 'integer', minimum: 1 })
+    expect(p.default).toBe(1)
+  })
+
+  test('header param carries its description', () => {
+    const doc = buildWith([{ name: 'sid', in: 'header', type: 'String', description: 'session id' }])
+    const p = doc.paths['/p'].get.parameters[0]
+    expect(p.description).toBe('session id')
+    expect(p.schema).toEqual({ type: 'string' })
+  })
+
+  test('param with no constraints emits a clean primitive schema (no empty keyword objects)', () => {
+    const doc = buildWith([{ name: 'q', in: 'query', type: 'String' }])
+    const p = doc.paths['/p'].get.parameters[0]
+    expect(p.schema).toEqual({ type: 'string' })
+    expect(Object.keys(p.schema)).toEqual(['type'])
+    expect(p.default).toBeUndefined()
+    expect(p.description).toBeUndefined()
+  })
+
+  test('string default stays a string on the parameter object', () => {
+    const doc = buildWith([{ name: 'sort', in: 'query', type: 'String', defaultValue: 'asc' }])
+    const p = doc.paths['/p'].get.parameters[0]
+    expect(p.schema).toEqual({ type: 'string' })
+    expect(p.default).toBe('asc')
+  })
+})

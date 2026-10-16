@@ -13,6 +13,7 @@ import { ParseResult } from './javaParser'
 import { TypeResolver } from './typeResolver'
 import { SchemaGenerator } from './schemaGenerator'
 import { ProjectSymbolIndex, ResolvedDto } from './javaAst/projectSymbolIndex'
+import { applyValidation } from './validationSchema'
 
 export interface OpenApiDocument {
   openapi: string
@@ -64,12 +65,28 @@ export class OpenApiBuilder {
               },
             }
           } else {
-            operation.parameters.push({
+            let schema: any = OpenApiBuilder.primitiveSchema(param.type)
+            if (param.validation && param.validation.length > 0) {
+              schema = applyValidation(schema, param.validation, param.type ?? '')
+            }
+            const entry: any = {
               name: param.name,
               in: param.in,
               required: param.required ?? (param.in === 'path'),
-              schema: OpenApiBuilder.primitiveSchema(param.type),
-            })
+              schema,
+            }
+            if (param.description !== undefined) {
+              entry.description = param.description
+            }
+            if (param.defaultValue !== undefined) {
+              const t = schema.type
+              const numeric = t === 'integer' || t === 'number'
+              entry.default =
+                numeric && typeof param.defaultValue === 'string' && param.defaultValue.trim() !== ''
+                  ? Number(param.defaultValue)
+                  : param.defaultValue
+            }
+            operation.parameters.push(entry)
           }
         }
       }
