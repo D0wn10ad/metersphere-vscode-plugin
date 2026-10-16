@@ -56,3 +56,27 @@ describe('parseEnvVariables', () => {
     expect(parseEnvVariables('not-json')).toEqual({})
   })
 })
+
+describe('parseEnvVariables — robustness regressions', () => {
+  test('skips null array elements instead of throwing', () => {
+    expect(parseEnvVariables('[{"name":"a","value":"1"},null]')).toEqual({ a: '1' })
+  })
+
+  test('drops non-primitive object values instead of "[object Object]"', () => {
+    expect(parseEnvVariables('{"obj":{"x":1},"n":5,"s":"v","b":true}')).toEqual({ n: '5', s: 'v', b: 'true' })
+  })
+
+  test('skips array elements that are not name/value objects', () => {
+    expect(parseEnvVariables('["just-a-string",42]')).toEqual({})
+  })
+})
+
+describe('resolveVariables — prototype safety', () => {
+  test('does not resolve prototype member names like toString', () => {
+    expect(resolveVariables('{{toString}}', {})).toBe('{{toString}}')
+  })
+
+  test('still resolves own keys', () => {
+    expect(resolveVariables('{{baseUrl}}', { baseUrl: 'http://x' })).toBe('http://x')
+  })
+})

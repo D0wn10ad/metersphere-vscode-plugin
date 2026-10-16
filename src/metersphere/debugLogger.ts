@@ -21,7 +21,7 @@ export class DebugLogger {
     const timestamp = new Date().toISOString()
     channel.appendLine(`[${timestamp}] [${category}] ${message}`)
     if (data !== undefined) {
-      channel.appendLine(`  Data: ${JSON.stringify(data, null, 2)}`)
+      channel.appendLine(`  Data: ${safeStringify(data)}`)
     }
   }
 
@@ -43,5 +43,14 @@ export class DebugLogger {
   static show(): void {
     if (!DebugLogger.isEnabled()) return
     DebugLogger.getChannel().show()
+  }
+}
+
+/** JSON.stringify that survives circular structures — a logger must never throw. */
+function safeStringify(data: unknown): string {
+  try {
+    return JSON.stringify(data, null, 2)
+  } catch {
+    return String(data)
   }
 }

@@ -71,7 +71,14 @@ function bodyLines(image: string): string[] {
  */
 export function buildJavadocIndex(source: string): JavadocIndex {
   const parser = loadJavaParser();
-  const parsed = parser.parse(source);
+  // Malformed Java can make the underlying parser throw; an index build must
+  // degrade to "no javadoc" instead of crashing the caller.
+  let parsed: { comments?: Array<{ startLine: number; endLine: number; image: string }> };
+  try {
+    parsed = parser.parse(source);
+  } catch {
+    return { forLine: () => undefined, summaryFor: () => undefined, summaryForAdjacent: () => undefined, bodyForAdjacent: () => undefined, paramForAdjacent: () => undefined };
+  }
   const comments: JavadocComment[] = (parsed.comments || [])
     .filter((c: { image?: string }) => c.image && isJavadoc(c.image))
     .map((c: { startLine: number; endLine: number; image: string }) => ({
@@ -128,10 +135,21 @@ export function buildJavadocIndex(source: string): JavadocIndex {
     if (!c) {
       return undefined;
     }
-    for (const l of bodyLines(c.image)) {
-      const m = /^@param\s+(\S+)\s+(.+)$/.exec(l);
+    const lines = bodyLines(c.image);
+    for (let i = 0; i < lines.length; i++) {
+      const m = /^@param\s+(\S+)\s+(.+)$/.exec(lines[i]);
       if (m && m[1] === paramName) {
-        return m[2].trim();
+        // A description continues onto following lines until the next @tag
+        // or the comment end; a single-line match would truncate it.
+        const parts = [m[2].trim()];
+        for (let j = i + 1; j < lines.length; j++) {
+          const cont = lines[j].trim();
+          if (cont === '' || cont.startsWith('@') || cont.startsWith('*/')) {
+            break;
+          }
+          parts.push(cont);
+        }
+        return parts.join(' ');
       }
     }
     return undefined;

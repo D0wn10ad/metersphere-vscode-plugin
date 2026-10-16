@@ -150,7 +150,12 @@ export function parseParameters(
   }
 
   const out: ParsedParameter[] = [];
-  const fps = (fpl.children['formalParameter'] || []) as CstNode[];
+  // A varargs parameter is a `lastFormalParameter` child of the list, not a
+  // `formalParameter` — iterating only `formalParameter` drops it.
+  const fps = [
+    ...((fpl.children['formalParameter'] || []) as CstNode[]),
+    ...((fpl.children['lastFormalParameter'] || []) as CstNode[]),
+  ];
   for (const fp of fps) {
     const regular = findFirst(fp, 'variableParaRegularParameter');
     const param = regular ?? findFirst(fp, 'variableArityParameter');

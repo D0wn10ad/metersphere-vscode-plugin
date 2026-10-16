@@ -125,3 +125,19 @@ describe('annotationReader — nested annotations + string escapes', () => {
     expect(firstString(foo!.values['value'])).toBe('A');
   });
 });
+describe('annotationReader — nested annotation VALUE kind', () => {
+  it('reads a directly nested annotation value as kind:annotation, not its inner literal', () => {
+    const src = 'class C { @Foo(bar = @Baz(x = 1)) void m() {} }';
+    const cst = loadJavaParser().parse(src);
+    const foo = findAll(cst, 'annotation')
+      .map((n) => readAnnotation(n, src))
+      .find((a) => a.name === 'Foo');
+    expect(foo).toBeDefined();
+    const bar = foo!.values['bar'];
+    expect(bar.kind).toBe('annotation');
+    if (bar.kind === 'annotation') {
+      expect(bar.value.name).toBe('Baz');
+      expect(bar.value.values['x']).toEqual({ kind: 'number', value: 1 });
+    }
+  });
+});

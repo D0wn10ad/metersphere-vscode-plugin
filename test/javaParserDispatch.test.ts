@@ -7,6 +7,7 @@
  */
 
 import { parseJava } from '../src/metersphere/javaParserDispatch';
+import { JavaParser } from '../src/metersphere/javaParser';
 import { DebugLogger } from '../src/metersphere/debugLogger';
 
 const VALID_CONTROLLER = [
@@ -70,5 +71,25 @@ describe('javaParserDispatch', () => {
     expect(engine).toBe('regex');
     expect(spy).toHaveBeenCalled();
     spy.mockRestore();
+  });
+});
+
+describe('javaParserDispatch — regex fallback failure isolation', () => {
+  it('returns an empty result (never throws) when the regex fallback itself throws', () => {
+    const logSpy = jest.spyOn(DebugLogger, 'log').mockImplementation(() => {});
+    const errorSpy = jest.spyOn(DebugLogger, 'error').mockImplementation(() => {});
+    const parseSpy = jest.spyOn(JavaParser, 'parseSource').mockImplementation(() => {
+      throw new Error('regex boom');
+    });
+
+    const { result, engine } = parseJava(MALFORMED, 'file:///bad.java');
+
+    expect(engine).toBe('regex');
+    expect(result).toEqual({ classes: [], apis: [] });
+    expect(errorSpy).toHaveBeenCalled();
+
+    parseSpy.mockRestore();
+    logSpy.mockRestore();
+    errorSpy.mockRestore();
   });
 });

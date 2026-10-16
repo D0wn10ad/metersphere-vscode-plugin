@@ -31,11 +31,24 @@ export function parseJava(source: string, uri: string): DispatchResult {
     const result = parseJavaCst(source, uri);
     if (result.apis.length === 0 && hasControllerAnnotation(source)) {
       DebugLogger.log('Parser', 'CST found no APIs despite a controller annotation; falling back to regex', { uri });
-      return { result: JavaParser.parseSource(source, uri), engine: 'regex' };
+      return { result: runRegexFallback(source, uri), engine: 'regex' };
     }
     return { result, engine: 'cst' };
   } catch (err) {
     DebugLogger.log('Parser', 'CST parse failed; falling back to regex', { uri, error: String(err) });
-    return { result: JavaParser.parseSource(source, uri), engine: 'regex' };
+    return { result: runRegexFallback(source, uri), engine: 'regex' };
+  }
+}
+
+/**
+ * The regex fallback must never throw either — the dispatcher contract is that
+ * parseJava always returns a result. A failing fallback yields an empty result.
+ */
+function runRegexFallback(source: string, uri: string): ParseResult {
+  try {
+    return JavaParser.parseSource(source, uri);
+  } catch (err) {
+    DebugLogger.error('Parser', 'Regex fallback failed; returning empty result', { uri, error: String(err) });
+    return { classes: [], apis: [] };
   }
 }

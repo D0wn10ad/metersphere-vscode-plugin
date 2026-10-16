@@ -297,3 +297,19 @@ describe('cstParamParser — defaultValue implies not-required', () => {
     expect(params[0].required).toBe(true);
   });
 });
+
+describe('cstParamParser — varargs (lastFormalParameter)', () => {
+  it('parses a varargs parameter instead of dropping it', () => {
+    const { node, source } = firstMethodOf(controller('@RequestParam("ids") int... ids'));
+    const params = parseParameters(node, source);
+    expect(params).toHaveLength(1);
+    expect(params[0].name).toBe('ids');
+    expect(params[0].in).toBe('query');
+  });
+
+  it('parses regular + varargs parameters together', () => {
+    const { node, source } = firstMethodOf(controller('@RequestParam("a") String a, @RequestParam("b") int... b'));
+    const params = parseParameters(node, source);
+    expect(params.map((p) => p.name)).toEqual(['a', 'b']);
+  });
+});

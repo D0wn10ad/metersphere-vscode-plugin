@@ -111,6 +111,15 @@ function readElementValue(ev: CstNode, source: string): AnnotationValue {
     return { kind: 'array', value: items };
   }
 
+  // Nested annotation value: elementValue -> annotation DIRECTLY (no
+  // conditionalExpression wrapper). Must be checked BEFORE the
+  // conditionalExpression lookup, which would otherwise descend INTO the
+  // nested annotation and misread its inner literal as this value.
+  const directAnnotation = (ev.children['annotation'] || [])[0] as CstNode | undefined;
+  if (directAnnotation) {
+    return { kind: 'annotation', value: readAnnotation(directAnnotation, source) };
+  }
+
   const cond = findFirst(ev, 'conditionalExpression');
   if (!cond) {
     return { kind: 'identifier', value: text(ev, source).trim() };
