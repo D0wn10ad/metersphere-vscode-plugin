@@ -15,6 +15,7 @@ export class ConnectionManager {
   private state: ConnectionState = ConnectionState.Unconfigured
   private lastError?: string
   private currentUrl?: string
+  private testGeneration = 0
 
   constructor(context: vscode.ExtensionContext) {
     this.statusBarItem = vscode.window.createStatusBarItem(
@@ -53,6 +54,7 @@ export class ConnectionManager {
     accessKey?: string,
     secretKey?: string
   ): Promise<{ success: boolean; url?: string; error?: string }> {
+    const gen = ++this.testGeneration
     const msUrl = url ?? SettingsManager.getMsUrl()
     const ak = accessKey ?? SettingsManager.getAccessKey()
     const sk = secretKey ?? SettingsManager.getSecretKey()
@@ -74,22 +76,29 @@ export class ConnectionManager {
       try {
         const resp = await httpRequest('GET', `${msUrl}/api/currentUser`, headers)
         DebugLogger.log('Connection', 'currentUser response', { status: resp.status, body: resp.body })
+        const stale = gen !== this.testGeneration
         if (resp.status === 200) {
-          this.currentUrl = msUrl
           const body = resp.body as any
           const userId = body?.data?.id
-          if (userId) {
-            SettingsManager.setCurrentUserId(userId)
+          if (!stale) {
+            this.currentUrl = msUrl
+            if (userId) {
+              SettingsManager.setCurrentUserId(userId)
+            }
+            this.update(ConnectionState.Connected, msUrl)
           }
-          this.update(ConnectionState.Connected, msUrl)
           return { success: true, url: msUrl }
         } else {
-          this.update(ConnectionState.Disconnected)
+          if (!stale) {
+            this.update(ConnectionState.Disconnected)
+          }
           return { success: false, error: `HTTP ${resp.status}` }
         }
       } catch (error) {
         DebugLogger.error('Connection', 'currentUser request failed', error)
-        this.update(ConnectionState.Disconnected)
+        if (gen === this.testGeneration) {
+          this.update(ConnectionState.Disconnected)
+        }
         return { success: false, error: String(error) }
       }
     }
@@ -103,7 +112,9 @@ export class ConnectionManager {
       return await Promise.race([doTest(), timeout])
     } catch (error) {
       DebugLogger.error('Connection', 'testConnection timeout/failure', error)
-      this.update(ConnectionState.Disconnected)
+      if (gen === this.testGeneration) {
+        this.update(ConnectionState.Disconnected)
+      }
       return { success: false, error: String(error) }
     }
   }
