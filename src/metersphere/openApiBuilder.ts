@@ -36,8 +36,21 @@ export function resetUploadSymbolIndex(): void {
   sharedSymbolIndex = new ProjectSymbolIndex()
 }
 
+function joinContextPath(contextPath: string | undefined, path: string): string {
+  if (!contextPath) return path
+  const prefix = contextPath.replace(/\/+$/, '')
+  if (!prefix || prefix === '/') return path
+  const suffix = path.startsWith('/') ? path : `/${path}`
+  return `${prefix}${suffix}`
+}
+
 export class OpenApiBuilder {
-  static build(parseResult: ParseResult, title: string, version?: string): OpenApiDocument {
+  static build(
+    parseResult: ParseResult,
+    title: string,
+    version?: string,
+    contextPath?: string
+  ): OpenApiDocument {
     const paths: Record<string, Record<string, any>> = {}
     const schemas: Record<string, any> = {}
     const operationIdCounts = new Map<string, number>()
@@ -48,7 +61,7 @@ export class OpenApiBuilder {
 
     for (const api of apis) {
       const method = (api.method || 'GET').toLowerCase()
-      const path = api.fullPath || api.path || '/'
+      const path = joinContextPath(contextPath, api.fullPath || api.path || '/')
 
       const operation: any = {
         summary: api.summary || `${api.method} ${api.path}`,
