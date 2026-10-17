@@ -9,7 +9,7 @@
  * data, not an assertion). No row asserts a regex-only implementation detail.
  */
 
-import { ParseResult } from '../src/metersphere/javaParser';
+import { JavaParser, ParseResult } from '../src/metersphere/javaParser';
 import { parseJavaWithEngine, ParseEngine } from '../src/metersphere/javaParserDispatch';
 
 const cases: Array<{ name: string; source: string; assert: (r: ParseResult) => void }> = [
@@ -685,5 +685,172 @@ describe.each<[ParseEngine]>([['cst'], ['regex']])('JavaParser [%s]', (engine) =
   it.each(cases)('$name', (c) => {
     const result = parseJavaWithEngine(c.source, 'file:///test.java', engine);
     c.assert(result);
+  });
+
+  describe('C1: order-independent annotation lookup', () => {
+    it('should resolve @Operation(summary) placed BELOW @GetMapping (IntelliJ layout)', () => {
+      const code = `
+@RestController
+public class UserController {
+  @GetMapping("/x")
+  @Operation(summary = "A op")
+  public List<User> getUsers() { return null; }
+}
+`;
+      const result = JavaParser.parseSource(code, 'file:///UserController.java');
+      expect(result.apis).toHaveLength(1);
+      expect(result.apis[0].summary).toBe('A op');
+    });
+
+    it('should resolve @ApiOperation(value) placed BELOW @GetMapping', () => {
+      const code = `
+@RestController
+public class UserController {
+  @GetMapping("/x")
+  @ApiOperation(value = "B op")
+  public List<User> getUsers() { return null; }
+}
+`;
+      const result = JavaParser.parseSource(code, 'file:///UserController.java');
+      expect(result.apis).toHaveLength(1);
+      expect(result.apis[0].summary).toBe('B op');
+    });
+
+    it('should resolve @Description placed BELOW @GetMapping', () => {
+      const code = `
+@RestController
+public class UserController {
+  @GetMapping("/x")
+  @Description("C")
+  public List<User> getUsers() { return null; }
+}
+`;
+      const result = JavaParser.parseSource(code, 'file:///UserController.java');
+      expect(result.apis).toHaveLength(1);
+      expect(result.apis[0].summary).toBe('C');
+    });
+
+    it('should still resolve @Operation(summary) placed ABOVE @GetMapping (classic layout)', () => {
+      const code = `
+@RestController
+public class UserController {
+  @Operation(summary = "Classic op")
+  @GetMapping("/x")
+  public List<User> getUsers() { return null; }
+}
+`;
+      const result = JavaParser.parseSource(code, 'file:///UserController.java');
+      expect(result.apis).toHaveLength(1);
+      expect(result.apis[0].summary).toBe('Classic op');
+    });
+
+    it('should pick the nearest @Operation for each method (no cross-contamination)', () => {
+      const code = `
+@RestController
+public class MultiController {
+  @GetMapping("/a")
+  @Operation(summary = "A summary")
+  public String a() { return null; }
+
+  @GetMapping("/b")
+  @Operation(summary = "B summary")
+  public String b() { return null; }
+}
+`;
+      const result = JavaParser.parseSource(code, 'file:///MultiController.java');
+      expect(result.apis).toHaveLength(2);
+      const byPath: Record<string, string | undefined> = {};
+      for (const api of result.apis) byPath[api.path] = api.summary;
+      expect(byPath['/a']).toBe('A summary');
+      expect(byPath['/b']).toBe('B summary');
+    });
+
+    it('should keep inner parens in @Operation(summary) (paren-depth-aware capture)', () => {
+      const code = `
+@RestController
+public class UserController {
+  @GetMapping("/users/{id}")
+  @Operation(summary = "get user (by id)")
+  public User getUser() { return null; }
+}
+`;
+      const result = JavaParser.parseSource(code, 'file:///UserController.java');
+      expect(result.apis).toHaveLength(1);
+      expect(result.apis[0].summary).toBe('get user (by id)');
+    });
+
+    it('should not emit a phantom API from @GetMapping inside a string literal', () => {
+      const code = `
+@RestController
+public class DocController {
+  @GetMapping("/real")
+  public String getReal() { return "@GetMapping(/fake)"; }
+}
+`;
+      const result = JavaParser.parseSource(code, 'file:///DocController.java');
+      expect(result.apis).toHaveLength(1);
+      expect(result.apis[0].path).toBe('/real');
+    });
+
+    it('should not emit a phantom API from @GetMapping inside a comment', () => {
+      const code = `
+@RestController
+public class CommentController {
+  // @GetMapping("/commented")
+  @GetMapping("/real")
+  public String getReal() { return null; }
+}
+`;
+      const result = JavaParser.parseSource(code, 'file:///CommentController.java');
+      expect(result.apis).toHaveLength(1);
+      expect(result.apis[0].path).toBe('/real');
+    });
+
+    it('should preserve the fallback name when no summary annotation exists', () => {
+      const code = `
+@RestController
+public class UserController {
+  @GetMapping
+  public List<User> getUsers() { return null; }
+}
+`;
+      const result = JavaParser.parseSource(code, 'file:///UserController.java');
+      expect(result.apis[0].summary).toBe('GET /');
+    });
+
+    it('should not crash on malformed Java with an unclosed paren', () => {
+      const code = `
+@RestController
+public class BrokenController {
+  @GetMapping("/broken"
+  public List<User> getUsers() { return null; }
+}
+`;
+      expect(() => JavaParser.parseSource(code, 'file:///BrokenController.java')).not.toThrow();
+    });
+  });
+});
+
+describe('C1 dual-engine gate: order-independent annotation lookup', () => {
+  const wrap = (annotations: string) => `
+@RestController
+public class UserController {
+  ${annotations}
+  public List<User> getUsers() { return null; }
+}
+`;
+  const cases: Array<[string, string, string]> = [
+    ['@Operation below @GetMapping (IntelliJ layout)', '@GetMapping("/x")\n  @Operation(summary = "A op")', 'A op'],
+    ['@ApiOperation below @GetMapping', '@GetMapping("/x")\n  @ApiOperation(value = "B op")', 'B op'],
+    ['@Description below @GetMapping', '@GetMapping("/x")\n  @Description("C")', 'C'],
+    ['@Operation above @GetMapping (classic layout)', '@Operation(summary = "D op")\n  @GetMapping("/x")', 'D op'],
+    ['parens inside summary', '@Operation(summary = "get user (by id)")\n  @GetMapping("/x")', 'get user (by id)'],
+  ];
+  it.each(['cst', 'regex'] as ParseEngine[])('engine=%s resolves every layout', (engine) => {
+    for (const [name, annotations, expected] of cases) {
+      const result = parseJavaWithEngine(wrap(annotations), 'file:///UserController.java', engine);
+      expect(result.apis).toHaveLength(1);
+      expect(result.apis[0].summary).toBe(expected);
+    }
   });
 });

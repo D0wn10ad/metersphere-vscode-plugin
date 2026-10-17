@@ -1,5 +1,6 @@
 import { ParseResult, ParsedApi } from './javaParser';
 import { OpenApiBuilder } from './openApiBuilder';
+import { applyContextPathToPaths, prependContextPath } from './contextPath';
 
 export interface PostmanItem {
   name: string;
@@ -136,5 +137,56 @@ export class SyncService {
   static toOpenApiCollection(parseResult: ParseResult, name: string): string {
     const doc = OpenApiBuilder.build(parseResult, name)
     return JSON.stringify(doc, null, 2)
+  }
+
+  /**
+   * Build the upload plan: one document per target branch.
+   * 'both' + placement → two documents (iapi first, then eapi) targeting the
+   * SAME module; the iapi copy's paths carry the managed prefix. The branch is
+   * expressed in URL shape only — never in module-tree tags.
+   */
+  static buildUploadPlan(options: {
+    parseResult: ParseResult
+    name: string
+    format: 'swagger2' | 'postman'
+    contextPath?: string
+    serviceRootPath?: string
+    branch: 'eapi' | 'iapi' | 'both' | 'none'
+    managedPrefix?: string
+  }): Array<{ json: string; filename: string; branch: 'eapi' | 'iapi' | 'none' }> {
+    const { parseResult, name, format } = options
+    const manualCtx = (options.contextPath ?? '').trim()
+    const effectiveCtx = manualCtx || (options.serviceRootPath ?? '')
+    const prefix = options.managedPrefix ?? '/managed'
+    const joinPrefix = (p: string, ctx: string): string => {
+      if (!p) return ctx
+      if (!ctx) return p
+      return `${p.replace(/\/+$/, '')}/${ctx.replace(/^\/+/, '')}`
+    }
+    const serialize = (ctx: string): string => {
+      if (format === 'swagger2') {
+        const doc = JSON.parse(SyncService.toOpenApiCollection(parseResult, name))
+        doc.paths = applyContextPathToPaths(doc.paths, ctx)
+        return JSON.stringify(doc, null, 2)
+      }
+      const postmanCollection = SyncService.toPostmanCollection(parseResult, name)
+      for (const item of postmanCollection.item) {
+        const joined = (item.request.url.path || []).join('/')
+        const prefixed = prependContextPath('/' + joined, ctx)
+        item.request.url.raw = prefixed
+        item.request.url.path = prefixed.split('/').filter(Boolean)
+      }
+      return JSON.stringify(postmanCollection, null, 2)
+    }
+    if (options.branch === 'both') {
+      return [
+        { json: serialize(joinPrefix(prefix, effectiveCtx)), filename: `${name}-iapi.json`, branch: 'iapi' as const },
+        { json: serialize(effectiveCtx), filename: `${name}-eapi.json`, branch: 'eapi' as const },
+      ]
+    }
+    if (options.branch === 'iapi') {
+      return [{ json: serialize(joinPrefix(prefix, effectiveCtx)), filename: `${name}.json`, branch: 'iapi' as const }]
+    }
+    return [{ json: serialize(effectiveCtx), filename: `${name}.json`, branch: 'none' as const }]
   }
 }

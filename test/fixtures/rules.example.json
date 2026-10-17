@@ -1,0 +1,11 @@
+{
+  "placement": { "enabled": true, "managedPrefix": "/managed" },
+  "rules": [
+    { "matchOn": "methodAndPathPrefix", "pattern": "/api/orders", "branch": "eapi" },
+    { "matchOn": "pathRegex", "pattern": "^/api/v2/", "branch": "iapi" },
+    { "matchOn": "className", "pattern": "OrderController", "branch": "both" },
+    { "matchOn": "javadocCategory", "pattern": "external", "branch": "iapi" },
+    { "matchOn": "annotationTag", "pattern": "legacy", "branch": "eapi" },
+    { "matchOn": "catchAll", "pattern": "", "branch": "both" }
+  ]
+}

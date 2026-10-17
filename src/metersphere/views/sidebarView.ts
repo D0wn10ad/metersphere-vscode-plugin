@@ -2,6 +2,9 @@ import * as vscode from 'vscode'
 import { SettingsManager } from '../settingsManager'
 import { JavaParser } from '../javaParser'
 import { SyncService } from '../syncService'
+import { loadRules } from '../rulesLoader'
+import { resolveServiceRootPathFromDir } from '../serviceRootPathResolver'
+import { resolveServerVersion } from '../versionProbe'
 import FormData from 'form-data'
 import { DebugLogger } from '../debugLogger'
 import { ContextHolder } from '../contextHolder'
@@ -318,23 +321,35 @@ export class SidebarView {
 
       const collectionName = SyncService.resolveCollectionName(uploadData.exportName, uploadData.files)
 
-      let jsonContent: string
-      if (isOpenApi) {
-        const doc = JSON.parse(SyncService.toOpenApiCollection(allApis, collectionName))
-        doc.paths = applyContextPathToPaths(doc.paths, uploadData.contextPath)
-        jsonContent = JSON.stringify(doc, null, 2)
-      } else {
-        const postmanCollection = SyncService.toPostmanCollection(allApis, collectionName)
+      const rulesConfig = loadRules()
+      const override = uploadData.branchOverride
+      const effectiveBranch: 'eapi' | 'iapi' | 'both' | 'none' =
+        override && override !== 'auto' && ['eapi', 'iapi', 'both', 'none'].includes(override)
+          ? override
+          : rulesConfig.placement.enabled
+            ? 'both'
+            : 'none'
 
-        for (const item of postmanCollection.item) {
-          const joined = (item.request.url.path || []).join('/')
-          const prefixed = prependContextPath('/' + joined, uploadData.contextPath)
-          item.request.url.raw = prefixed
-          item.request.url.path = prefixed.split('/').filter(Boolean)
+      // Precedence: manual UI Context Path (authoritative) > service-root-path > none
+      let serviceRootPath = ''
+      if (!(uploadData.contextPath ?? '').trim()) {
+        try {
+          const firstDir = uploadData.files[0].replace(/[/\\][^/\\]*$/, '')
+          serviceRootPath = resolveServiceRootPathFromDir(firstDir).path
+        } catch {
+          serviceRootPath = ''
         }
-
-        jsonContent = JSON.stringify(postmanCollection, null, 2)
       }
+
+      const uploadPlan = SyncService.buildUploadPlan({
+        parseResult: allApis,
+        name: collectionName,
+        format: isOpenApi ? 'swagger2' : 'postman',
+        contextPath: uploadData.contextPath,
+        serviceRootPath,
+        branch: effectiveBranch,
+        managedPrefix: rulesConfig.placement.managedPrefix,
+      })
 
       const moduleParts = uploadData.moduleId.split(':')
       const projectId = moduleParts[0]
@@ -352,118 +367,152 @@ export class SidebarView {
       SidebarView.postMessage({ command: 'uploadProgress', data: { message: 'Uploading to MeterSphere...' } })
 
       const isFullCoverage = uploadData.mode === 'fullCoverage'
-      const serverVersion = SettingsManager.getServerVersion()
+      const probeHeaders = SettingsManager.buildAuthHeaders('application/json') as Record<string, string>
+      const probe = await resolveServerVersion(msUrl, probeHeaders)
+      if (probe.warning) {
+        DebugLogger.log('Sync', 'Version probe fallback', { warning: probe.warning })
+      }
+      const serverVersion = probe.version
+      const versionLabel = serverVersion === 'v3' ? ' (v3 — experimental/untested)' : ''
+      SidebarView.postMessage({ command: 'uploadProgress', data: { message: `Uploading to MeterSphere${versionLabel}...` } })
 
-      // Create FormData with proper multipart format
-      const formData = new FormData()
-      formData.append('file', jsonContent, {
-        filename: `${collectionName}.json`,
-        contentType: 'application/json',
-      })
+      for (const entry of uploadPlan) {
+        // Create FormData with proper multipart format
+        const formData = new FormData()
+        formData.append('file', entry.json, {
+          filename: entry.filename,
+          contentType: 'application/json',
+        })
 
-      // Build request JSON based on server version; the platform is derived from the
-      // content actually being sent (never from the server version).
-      const platform = resolveUploadPlatform(isOpenApi ? 'swagger3' : 'postman')
-      let requestJson: string
-      if (serverVersion === 'v3') {
-        requestJson = JSON.stringify({
-          coverModule: isFullCoverage,
-          coverData: isFullCoverage,
-          type: 'API',
-          platform,
-          syncCase: uploadData.syncCase ?? true,
-          moduleId,
-          model: 'definition',
-          projectId,
-          protocol: 'HTTP',
-          origin: 'vscode',
+        // Build request JSON based on server version
+        let requestJson: string
+        if (serverVersion === 'v3') {
+          requestJson = JSON.stringify({
+            coverModule: isFullCoverage,
+            coverData: isFullCoverage,
+            type: 'API',
+            platform: 'Swagger3',
+            syncCase: uploadData.syncCase ?? true,
+            moduleId,
+            model: 'definition',
+            projectId,
+            protocol: 'HTTP',
+            origin: 'vscode',
+          })
+        } else {
+          const bodyModeId = isFullCoverage ? 'fullCoverage' : 'incrementalMerge'
+          requestJson = JSON.stringify({
+            platform: isOpenApi ? 'Swagger2' : 'Postman',
+            moduleId,
+            projectId,
+            modeId: bodyModeId,
+            syncCase: uploadData.syncCase ?? true,
+            model: 'definition',
+            protocol: 'HTTP',
+            origin: 'vscode',
+            coverModule: isFullCoverage,
+            versionId: uploadData.versionId ?? '',
+            updateVersionId: uploadData.updateVersionId ?? '',
+          })
+        }
+
+        // FIXED: Append 'request' AFTER requestJson is created
+        formData.append('request', requestJson, { 
+          contentType: 'application/json',
+          filename: 'request.json',
         })
-      } else {
-        const bodyModeId = isFullCoverage ? 'fullCoverage' : 'incrementalMerge'
-        requestJson = JSON.stringify({
-          platform,
-          moduleId,
-          projectId,
-          modeId: bodyModeId,
-          syncCase: uploadData.syncCase ?? true,
-          model: 'definition',
-          protocol: 'HTTP',
-          origin: 'vscode',
-          coverModule: isFullCoverage,
-          versionId: uploadData.versionId ?? '',
-          updateVersionId: uploadData.updateVersionId ?? '',
+
+        // FIXED: Get Content-Type with boundary from formData.getHeaders()
+        // NOTE: form-data library returns lowercase 'content-type' key!
+        const formDataHeaders = formData.getHeaders() as Record<string, string>
+      
+        // FIXED: Get the full buffer AFTER both parts are added
+        const bodyBuffer = formData.getBuffer()
+        const bodyLength = formData.getLengthSync()
+      
+        const msHeaders = SettingsManager.buildAuthHeaders(undefined) as Record<string, string>
+      
+        // FIXED: Set Content-Length to prevent EOF
+        const uploadHeaders = {
+          ...msHeaders,
+          'accept': 'application/json, text/plain, */*',
+          'Content-Type': formDataHeaders['content-type'], // lowercase key!
+          'Content-Length': String(bodyLength),
+        }
+      
+        DebugLogger.log('Sync', 'FormData debug', {
+          boundary: formData.getBoundary(),
+          contentType: formDataHeaders['content-type'],
+          headerKeys: Object.keys(formDataHeaders),
+          bodyLength: bodyLength,
+          bufferLength: bodyBuffer?.length,
+          bodyPreview: bodyBuffer?.toString('utf8').substring(0, 100),
         })
+
+        // Debug log for request JSON content
+        DebugLogger.log('Sync', 'Request JSON content', {
+          requestJson: requestJson.substring(0, 500),
+          requestJsonLength: requestJson.length,
+        })
+
+        DebugLogger.log('Sync', 'Upload request', {
+          url: `${msUrl}/api/api/definition/import`,
+          headerKeys: Object.keys(uploadHeaders),
+          hasAccessKey: !!(uploadHeaders as any).accessKey,
+          hasSignature: !!(uploadHeaders as any).signature,
+          contentType: (uploadHeaders as any)['Content-Type'],
+        })
+
+        const response = await fetch(`${msUrl}/api/api/definition/import`, {
+          method: 'POST',
+          headers: uploadHeaders,
+          // Buffer<ArrayBufferLike> is not assignable to the DOM BodyInit union under
+          // @types/node 20.x typings; undici fetch accepts a Buffer at runtime.
+          body: bodyBuffer as unknown as BodyInit,  // Use the pre-computed buffer instead of streaming formData
+        })
+
+        const responseText = await response.text()
+
+        // Debug log full response for error diagnosis
+        DebugLogger.log('Sync', 'Upload response', {
+          status: response.status,
+          ok: response.ok,
+          responseText: responseText.substring(0, 1000),  // Full error message
+          responseTextLength: responseText.length,
+        })
+
+        if (!response.ok) {
+          SidebarView.postMessage({ command: 'uploadError', data: { message: `Upload failed (${entry.filename}): ${response.status} ${responseText}` } })
+          return
+        }
       }
 
-      // FIXED: Append 'request' AFTER requestJson is created
-      formData.append('request', requestJson, { 
-        contentType: 'application/json',
-        filename: 'request.json',
-      })
+      SidebarView.postMessage({ command: 'uploadSuccess', data: { count: allApis.apis.length, documents: uploadPlan.length } })
 
-      // FIXED: Get Content-Type with boundary from formData.getHeaders()
-      // NOTE: form-data library returns lowercase 'content-type' key!
-      const formDataHeaders = formData.getHeaders() as Record<string, string>
-      
-      // FIXED: Get the full buffer AFTER both parts are added
-      const bodyBuffer = formData.getBuffer()
-      const bodyLength = formData.getLengthSync()
-      
-      const msHeaders = SettingsManager.buildAuthHeaders(undefined) as Record<string, string>
-      
-      // FIXED: Set Content-Length to prevent EOF
-      const uploadHeaders = {
-        ...msHeaders,
-        'accept': 'application/json, text/plain, */*',
-        'Content-Type': formDataHeaders['content-type'], // lowercase key!
-        'Content-Length': String(bodyLength),
-      }
-      
-      DebugLogger.log('Sync', 'FormData debug', {
-        boundary: formData.getBoundary(),
-        contentType: formDataHeaders['content-type'],
-        headerKeys: Object.keys(formDataHeaders),
-        bodyLength: bodyLength,
-        bufferLength: bodyBuffer?.length,
-        bodyPreview: bodyBuffer?.toString('utf8').substring(0, 100),
-      })
-
-      // Debug log for request JSON content
-      DebugLogger.log('Sync', 'Request JSON content', {
-        requestJson: requestJson.substring(0, 500),
-        requestJsonLength: requestJson.length,
-      })
-
-      DebugLogger.log('Sync', 'Upload request', {
-        url: `${msUrl}/api/api/definition/import`,
-        headerKeys: Object.keys(uploadHeaders),
-        hasAccessKey: !!(uploadHeaders as any).accessKey,
-        hasSignature: !!(uploadHeaders as any).signature,
-        contentType: (uploadHeaders as any)['Content-Type'],
-      })
-
-      const response = await fetch(`${msUrl}/api/api/definition/import`, {
-        method: 'POST',
-        headers: uploadHeaders,
-        // Buffer<ArrayBufferLike> is not assignable to the DOM BodyInit union under
-        // @types/node 20.x typings; undici fetch accepts a Buffer at runtime.
-        body: bodyBuffer as unknown as BodyInit,  // Use the pre-computed buffer instead of streaming formData
-      })
-
-      const responseText = await response.text()
-
-      // Debug log full response for error diagnosis
-      DebugLogger.log('Sync', 'Upload response', {
-        status: response.status,
-        ok: response.ok,
-        responseText: responseText.substring(0, 1000),  // Full error message
-        responseTextLength: responseText.length,
-      })
-
-      if (response.ok) {
-        SidebarView.postMessage({ command: 'uploadSuccess', data: { count: allApis.apis.length } })
-      } else {
-        SidebarView.postMessage({ command: 'uploadError', data: { message: `Upload failed: ${response.status} ${responseText}` } })
+      // Post-import verification (informational, never blocks): where did the rows land?
+      try {
+        const verifyHeaders = SettingsManager.buildAuthHeaders('application/json') as Record<string, string>
+        const verifyResp = await fetch(`${msUrl}/api/api/definition/list/all`, {
+          method: 'POST',
+          headers: verifyHeaders,
+          body: JSON.stringify({ projectId, protocol: 'HTTP' }),
+        })
+        const verifyText = await verifyResp.text()
+        let verification = `Post-import check: HTTP ${verifyResp.status}`
+        try {
+          const rows = (JSON.parse(verifyText)?.data ?? []) as Array<Record<string, unknown>>
+          const unplanned = rows.filter((r) => r.moduleId === 'root' || r.moduleName === '未规划接口').length
+          verification += `, ${rows.length} definitions visible, ${unplanned} in 未规划接口 (informational)`
+          if (uploadPlan.length > 1) {
+            verification += `; dual-upload sent ${uploadPlan.length} documents — confirm both rows materialized (branch-differentiated URLs should satisfy dedup)`
+          }
+        } catch {
+          // non-JSON body: keep the status-only summary
+        }
+        DebugLogger.log('Sync', 'Post-import verification', { verification })
+        SidebarView.postMessage({ command: 'uploadVerification', data: { message: verification } })
+      } catch (verifyError) {
+        DebugLogger.log('Sync', 'Post-import verification skipped', { error: String(verifyError) })
       }
     } catch (error) {
       DebugLogger.error('Sync', 'Upload failed', error)
@@ -1055,6 +1104,14 @@ ${SidebarView.getThemeStyles()}
     <option value="incrementalMerge">Add New (incrementalMerge)</option>
     <option value="fullCoverage">Overwrite (fullCoverage)</option>
   </select>
+  <label>Branch</label>
+  <select id="branchSelect">
+    <option value="auto">Auto (rules/@category)</option>
+    <option value="eapi">eapi</option>
+    <option value="iapi">iapi</option>
+    <option value="both">both</option>
+    <option value="none">none (no branch shaping)</option>
+  </select>
   <label>Context Path (optional)</label>
   <input type="text" id="contextPath" placeholder="/api/v1">
   <label>Export Name (optional)</label>
@@ -1236,6 +1293,7 @@ function upload() {
     files: selectedFiles,
     moduleId: moduleId,
     mode: document.getElementById('importMode').value,
+    branchOverride: document.getElementById('branchSelect').value,
     contextPath: document.getElementById('contextPath').value,
     exportName: document.getElementById('exportName').value,
     syncCase: document.getElementById('syncCases').checked,
@@ -1325,6 +1383,8 @@ window.addEventListener('message', function(event) {
     showStatus(msg.data?.message || '', 'loading');
   } else if (msg.command === 'uploadSuccess') {
     showStatus('Successfully uploaded ' + (msg.data?.count || 0) + ' APIs to MeterSphere!', 'success');
+  } else if (msg.command === 'uploadVerification') {
+    showStatus(msg.data?.message || '', 'success');
   } else if (msg.command === 'uploadError') {
     showStatus('Error: ' + (msg.data?.message || 'Unknown error'), 'error');
   } else if (msg.command === 'environmentsLoaded') {

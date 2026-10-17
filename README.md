@@ -80,6 +80,11 @@ code --install-extension path/to/generated.vsix  # or symlink out/ to your exten
 | `metersphere.workspaceId` | `""` | Workspace ID (auto-synced from Navigator) |
 | `metersphere.projectId` | `""` | Project ID (auto-synced from Navigator) |
 | `metersphere.debugEnabled` | `false` | Enable debug logging to Output panel |
+| `metersphere.exportFormat` | `swagger2` | Upload document format (`swagger2` = OpenAPI 3.0, `postman` = Postman collection) |
+| `metersphere.rejectUnauthorized` | `true` | Reject self-signed TLS certificates |
+| `metersphere.rulesPath` | `.metersphere/rules.json` | Workspace-relative path to the runtime rules JSON (branch/placement routing) |
+| `metersphere.defaultBranch` | `eapi` | Fallback branch when no override/rule/@category/tag matches (`eapi`/`iapi`/`none`) |
+| `metersphere.serverVersion` | `auto` | Server version for the upload payload (`auto` probes `/system/version/current`; `v3` is experimental/untested) |
 
 ## Commands
 
@@ -116,6 +121,69 @@ Right-click a `.java` file or folder in the File Explorer → **MeterSphere: Upl
 
 ### 4. Debug APIs
 Run `MeterSphere: Show Debugger` — select method, enter path and body, execute against your MeterSphere instance.
+
+## Branch Routing (eapi / iapi)
+
+Each synced API is routed into an `eapi` or `iapi` branch. The branch is expressed in the **URL shape only** — the module is always the one you pick in the Sync panel (no module-tree manipulation).
+
+**How the API path is decided:**
+
+```mermaid
+flowchart TD
+    A[Parse Java Controller/API] --> B["Extract method/class annotations, Javadoc, paths"]
+    B --> C["Apply C1: Order-independent annotation lookup"]
+    C --> D{"Manual override set?"}
+    D -- Yes --> E[Use manual branch]
+    D -- No --> F{"Rules match?"}
+    F -- Yes --> G["Use rule branch (first match wins)"]
+    F -- No --> H{"Javadoc @category (eapi|iapi|both) preferred; annotation tags fallback?"}
+    H -- Yes --> I[Use annotation branch]
+    H -- No --> J{"customization rule JSON placement enabled?"}
+    J -- Yes --> K[Default to BOTH]
+    J -- No --> L[Use metersphere.defaultBranch]
+    E --> M[Effective branch]
+    G --> M
+    I --> M
+    K --> M
+    L --> M
+
+    M --> N{"Effective branch == both AND customization rule JSON placement enabled?"}
+    N -- No --> O["Build single upload entry (URL composed; module = user-selected; no tree tags)"]
+    N -- Yes --> P[Build TWO upload entries]
+    P --> P1["Entry 1: branch iapi, path = /managed/<service-root-path>/<specific>"]
+    P --> P2["Entry 2: branch eapi, path = /<service-root-path>/<specific>"]
+
+    O --> Q[Determine specific interface path]
+    P1 --> Q1["Compose <specific>: prefer UI Context Path if set (authoritative) else derive from rules/service-root-path"]
+    P2 --> Q1
+
+    Q --> R
+    Q1 --> R["Resolve service-root-path from application.yml: webflux-first spring.application.webflux.base-path, else server.servlet.context-path; profile-aware, multi-doc, no silent env expansion; empty on conflict"]
+    R --> S["Apply path precedence: UI Context Path authoritative over service-root-path"]
+    S --> T["Normalize paths, compose final paths keys"]
+
+    T --> U{"Server version?"}
+    U -- v2 --> V["POST upload entries (1 or 2). Verify via post-import listing; URLs differ per branch so no URL_REPEATABLE needed"]
+    U -- v3 --> W["POST upload entries as planned; do NOT assume duplicates (paths may differ). v3 behavior experimental/untested; report actual outcome"]
+
+    V --> X["Post-import report: resolved paths, 未规划接口 fallbacks, materialization status"]
+    W --> X
+```
+
+**Resolution order (first match wins):**
+1. Manual **Branch** selector in the Sync panel (`auto` | `eapi` | `iapi` | `both` | `none`)
+2. Runtime rules from the customization rule JSON — file location configured by `metersphere.rulesPath` (default: `.metersphere/rules.json`, workspace-relative) — entries `{ "matchOn": "methodAndPathPrefix|pathRegex|className|javadocCategory|annotationTag|catchAll", "pattern": "...", "branch": "eapi|iapi|both" }`, first match wins, `catchAll` evaluated last
+3. Javadoc `@category eapi|iapi|both` (preferred marker; method-level overrides class-level)
+4. Annotation tags (`@Operation(tags = {"iapi"})`)
+5. `metersphere.defaultBranch` — or `both` when placement is enabled in the rules file
+
+**Dual upload:** when the effective branch is `both` (and placement is enabled), the plugin uploads TWO documents to the same module: the iapi copy's paths are prefixed with `placement.managedPrefix` (default `/managed`), the eapi copy stays plain — e.g. `/managed/<service-root-path>/<path>` and `/<service-root-path>/<path>`. The differing URLs satisfy MeterSphere's method+path dedup without URL_REPEATABLE.
+
+**Path precedence:** the manual Context Path field is authoritative; when empty, the service root path is auto-detected from `application.yml` (webflux-first `spring.application.webflux.base-path`, else `server.servlet.context-path`; profile-aware; `${ENV_VAR}` placeholders are never silently expanded).
+
+**Server versions:** `metersphere.serverVersion` `auto` probes `GET /system/version/current` (200 = v3, 404 = v2). **v3 is experimental/untested** — the plugin reports actual post-import outcomes instead of assuming duplicate rows.
+
+> Parser note: parsing is CST-first with a deterministic regex fallback — see the [Parser](#parser) section.
 
 ## Sync Flow
 
@@ -163,7 +231,9 @@ Tests use a mock VSCode stack: `src/vscode.d.ts` and `test/vscode-mock-setup.js`
 | Sidebar Migration | ✅ Complete | 4 webviews → single Control Panel, accordion panels |
 | API Endpoints in Navigator | ✅ Complete | API definitions under modules |
 | Debugger Polish & Integration | ✅ Complete | VSCode theme CSS, message queuing, upload duplication guard |
-| Header/Naming Fixes | ✅ Complete | @RequestHeader propagation, API naming precedence (Operation > Javadoc > path), AST parser parity |
+| Header/Naming Fixes | ✅ Complete | @RequestHeader propagation, API naming precedence (Operation > Javadoc > path) |
+| Java Parser (dual engine) | ✅ Complete | CST-first dispatch (`javaParserDispatch.ts`) with deterministic regex fallback; shared dual-engine expectation gate |
+| Sync Name/Path/Branch Routing | ✅ Complete | Order-independent annotation lookup; context path in both formats; runtime rules JSON; `@category`-preferred eapi/iapi/both routing with dual upload; version probe + post-import verification; v3 experimental/untested |
 
 ## Recent Fixes
 
@@ -174,9 +244,17 @@ Tests use a mock VSCode stack: `src/vscode.d.ts` and `test/vscode-mock-setup.js`
 | Multipart + cookie params | `@RequestPart`/`MultipartFile` params export as `multipart/form-data` with per-part schemas; `@CookieValue` exports as `in: cookie`. |
 | API naming precedence | `@Operation(summary)` > first Javadoc line > API path. Removed `@ApiOperation` as a naming source. |
 | Header propagation | `@RequestHeader` names now export into Postman/MeterSphere request headers instead of being dropped. |
-| AST parser parity | `JavaParserAst` now parses `@RequestHeader` in per-method analysis, matching `JavaParser` behavior. |
 | Javadoc enrichment | `enhanceWithJavadoc` only fills summary when one is missing, preserving explicit `@Operation(summary)`. |
 | Tests | Updated to verify header extraction and naming precedence across parser paths and export logic. All pass. |
+
+## Parser
+
+Java sources are parsed by **two engines behind one dispatcher** (`src/metersphere/javaParserDispatch.ts`):
+
+1. **CST engine (primary)** — `src/metersphere/javaAst/` built on the vendored `java-parser` bundle (`vendor/java-parser.cjs`, rebuilt via `scripts/build-cst-vendor.mjs`): full syntax-tree parsing of controllers, annotations (nested + escaped strings), parameters (varargs-aware, Spring required semantics), and Javadoc.
+2. **Regex engine (fallback)** — `src/metersphere/javaParser.ts`, used only when the CST throws (malformed Java) or returns zero APIs while the source still declares a controller annotation (a suspicious empty). A zero-API result on a non-controller file is a correct empty, not a fallback. Every fallback is logged with its reason — never silent. The regex engine uses order-independent annotation lookup (windowed nearest-annotation, paren-depth-aware capture, string-literal/comment masking), so `@Operation` is found whether it sits above or below `@GetMapping`.
+
+**Dual-engine equivalence gate:** `test/javaParser.test.ts` holds a shared expectation table where every row runs against **both** engines (`parseJavaWithEngine('cst' | 'regex')`) and must produce identical results — including annotation-order rows proving order-independent lookup on both engines.
 
 ## Architecture
 
@@ -207,6 +285,11 @@ src/
     uploadPlatform.ts           # Server platform mapping (OpenAPI ships as "Swagger2")
     variableResolver.ts         # {{var}} environment variable resolution
     escapeHtml.ts               # Webview HTML/JS escaping helpers
+    contextPathResolver.ts      # Context-path detection from application.* (prefill only)
+    serviceRootPathResolver.ts  # Webflux-first service root path detection
+    rulesLoader.ts              # Runtime rules JSON loading (branch/placement routing)
+    categoryResolver.ts         # eapi/iapi/both branch resolution chain
+    versionProbe.ts             # Server version probe (v2/v3 payload shape)
     contextHolder.ts            # Global extension context holder
     debugLogger.ts              # Debug logging to Output panel
     authHeader.js               # Auth header generation

@@ -1,0 +1,7 @@
+{
+  "placement": { "enabled": true, "managedPrefix": "/managed" },
+  "rules": [
+    { "matchOn": "className", "pattern": "AcmeOrderController", "branch": "both" },
+    { "matchOn": "catchAll", "pattern": "", "branch": "eapi" }
+  ]
+}

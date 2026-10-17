@@ -104,6 +104,23 @@
           "type": "boolean",
           "default": true,
           "description": "Reject self-signed HTTPS certificates (set to false for development servers)"
+        },
+        "metersphere.rulesPath": {
+          "type": "string",
+          "default": ".metersphere/rules.json",
+          "description": "Workspace-relative path to the runtime rules JSON file used for sync branch/placement routing"
+        },
+        "metersphere.defaultBranch": {
+          "type": "string",
+          "enum": ["eapi", "iapi", "none"],
+          "default": "eapi",
+          "description": "Fallback sync branch when no manual override, runtime rule, Javadoc @category, or annotation tag matches. 'none' keeps the API in the selected module without branch URL shaping."
+        },
+        "metersphere.serverVersion": {
+          "type": "string",
+          "enum": ["auto", "v2", "v3"],
+          "default": "auto",
+          "description": "MeterSphere server version used for the upload payload. 'auto' probes GET /system/version/current (v3 is experimental/untested); 'v2'/'v3' force the payload shape."
         }
       }
     },

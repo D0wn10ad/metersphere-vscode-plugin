@@ -142,6 +142,11 @@ src/
     uploadPlatform.ts        # Server platform mapping (OpenAPI ships as "Swagger2")
     variableResolver.ts      # {{var}} environment variable resolution
     escapeHtml.ts            # Webview HTML/JS escaping helpers
+    contextPathResolver.ts   # Context-path detection from application.* (prefill only)
+    serviceRootPathResolver.ts # Webflux-first service root path detection
+    rulesLoader.ts           # Runtime rules JSON loading (branch/placement routing)
+    categoryResolver.ts      # eapi/iapi/both branch resolution chain
+    versionProbe.ts          # Server version probe (v2/v3 payload shape)
     contextHolder.ts         # Global extension context holder
     debugLogger.ts           # Debug logging to Output panel
     javaAst/                 # CST parser stack (java-parser / Chevrotain based)
@@ -221,7 +226,8 @@ After design and planning, choose one:
 | Sidebar Migration | ✅ Complete | 4 separate webviews merged into single Control Panel; tab-bar replaced with accordion panels |
 | API Endpoints in Navigator | ✅ Complete | API definitions shown under modules in tree |
 | Debugger Polish & Sidebar Integration | ✅ Complete | VSCode theme CSS variables in debugger; inline History removed (sidebar-only); onclick→addEventListener cleanup; message queuing; upload duplication guard |
-| Header/Naming Fixes | ✅ Complete | @RequestHeader propagation, API naming precedence (Operation > Javadoc > path), AST parser parity |
+| Header/Naming Fixes | ✅ Complete | @RequestHeader propagation, API naming precedence (Operation > Javadoc > path) |
+| Sync Name/Path/Branch Routing | ✅ Complete | Order-independent annotation lookup; context path in both formats; runtime rules JSON; @category-preferred eapi/iapi/both routing with dual upload; version probe + post-import verification; v3 experimental/untested |
 | OpenAPI Schema Resolution | ✅ Complete | Tiers 1–2 (java-ast type extraction + $ref) plus Tiers 3–4 (async DTO pre-pass via LSP symbol provider / bounded disk scan, graceful degradation without redhat.java) |
 | Gap Analysis (IDEA vs VSCode) | ✅ Complete | `docs/superpowers/gap-analysis-vscode-vs-idea.md` documents all P0–P2 gaps |
 | OCR Security & Robustness Hardening | ✅ Complete | 52 review findings fixed across 14 themes (XSS escaping, timeouts, parser correctness, lifecycle guards, packaging); live-verified against v2.10.26-lts; 35 suites / 535 tests |
@@ -242,6 +248,8 @@ NOTE on phases:
 ## 9) Sync Operations
 
 This extension supports multiple ways to sync Java Spring Controllers to MeterSphere:
+
+The full branch-resolution and upload flow (how an API's path and branch are decided) is charted in README → **Branch Routing (eapi / iapi)**; the rules file location is `metersphere.rulesPath` (default `.metersphere/rules.json`).
 
 ### Supported Actions
 
@@ -408,3 +416,12 @@ Behind the v2 gateway, single- and double-`/api` prefixes hit **different backen
 - Double prefix `/api/api/project/list/{goPage}/{pageSize}` → hits the **api-test** service (`ExtProjectController`; class-level `@RequestMapping()` with an empty prefix, method-level full literal path) → returns **all** projects in the workspace.
 - Therefore: an empty list from the single prefix does **not** mean "no projects exist". When investigating projects, always query the double-prefix paginated list first; never assert "zero projects" from a single-prefix empty result.
 - Relevance to this extension: the Navigator's project discovery currently uses the single prefix (`/api/project/list/related`), so it can under-report projects for non-member users. Switching project enumeration to the double-prefix paginated list is a candidate fix (see §14 P2 "userId in project list").
+
+## 16) Parser Architecture (CST-first dual engine)
+
+Java parsing runs through `src/metersphere/javaParserDispatch.ts`:
+
+- **Primary:** the CST engine in `src/metersphere/javaAst/` (vendored `java-parser` bundle in `vendor/java-parser.cjs`; rebuild with `scripts/build-cst-vendor.mjs`). Parses controllers, annotations (nested, escaped strings), parameters (varargs-aware, Spring required semantics), and Javadoc from a real syntax tree. The former `javaParserAst.ts` was deleted — the CST stack replaced it.
+- **Fallback:** the regex engine `JavaParser.parseSource` (`src/metersphere/javaParser.ts`), used ONLY when (a) the CST throws (malformed Java) or (b) the CST returns zero APIs while the source still declares a controller annotation. Zero APIs on a non-controller file is a correct empty result, not a failure. Every fallback is DebugLogger-logged with the reason and URI — never silent.
+- **Regex-engine hardening:** order-independent annotation lookup (windowed nearest-annotation over `[mappingIdx-200, signatureStart)`, paren-depth- and string-literal-aware capture, comment/string masking) — `@Operation` resolves whether it sits above or below `@GetMapping`.
+- **Equivalence gate:** `test/javaParser.test.ts` runs a shared expectation table against BOTH engines via `parseJavaWithEngine('cst' | 'regex')`; every row must pass identically on both, including the C1 annotation-order rows. Current suite: 39 suites / 704 tests.

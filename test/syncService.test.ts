@@ -188,3 +188,59 @@ describe('SyncService', () => {
     });
   });
 });
+describe('SyncService.buildUploadPlan', () => {
+  const parseResult: any = {
+    classes: [],
+    apis: [{ method: 'GET', path: '/users', fullPath: '/users', parameters: [] }],
+  }
+
+  it("branch 'both' yields iapi-then-eapi documents with managed prefix on iapi only", () => {
+    const plan = SyncService.buildUploadPlan({
+      parseResult, name: 'UserApi', format: 'swagger2', branch: 'both', managedPrefix: '/managed',
+    })
+    expect(plan).toHaveLength(2)
+    expect(plan[0].filename).toBe('UserApi-iapi.json')
+    expect(plan[0].branch).toBe('iapi')
+    expect(Object.keys(JSON.parse(plan[0].json).paths)).toEqual(['/managed/users'])
+    expect(plan[1].filename).toBe('UserApi-eapi.json')
+    expect(plan[1].branch).toBe('eapi')
+    expect(Object.keys(JSON.parse(plan[1].json).paths)).toEqual(['/users'])
+  })
+
+  it("branch 'iapi' yields one managed-prefixed document", () => {
+    const plan = SyncService.buildUploadPlan({ parseResult, name: 'UserApi', format: 'swagger2', branch: 'iapi' })
+    expect(plan).toHaveLength(1)
+    expect(Object.keys(JSON.parse(plan[0].json).paths)).toEqual(['/managed/users'])
+  })
+
+  it("branches 'eapi' and 'none' yield one plain document (legacy)", () => {
+    for (const branch of ['eapi', 'none'] as const) {
+      const plan = SyncService.buildUploadPlan({ parseResult, name: 'UserApi', format: 'swagger2', branch })
+      expect(plan).toHaveLength(1)
+      expect(Object.keys(JSON.parse(plan[0].json).paths)).toEqual(['/users'])
+    }
+  })
+
+  it('manual contextPath is authoritative over serviceRootPath', () => {
+    const plan = SyncService.buildUploadPlan({ parseResult, name: 'U', format: 'swagger2', branch: 'eapi', contextPath: '/shop', serviceRootPath: '/srv' })
+    expect(Object.keys(JSON.parse(plan[0].json).paths)).toEqual(['/shop/users'])
+  })
+
+  it('serviceRootPath applies when contextPath is empty', () => {
+    const plan = SyncService.buildUploadPlan({ parseResult, name: 'U', format: 'swagger2', branch: 'eapi', serviceRootPath: '/srv' })
+    expect(Object.keys(JSON.parse(plan[0].json).paths)).toEqual(['/srv/users'])
+  })
+
+  it("both + serviceRootPath composes /managed/<srp>/<specific> and /<srp>/<specific>", () => {
+    const plan = SyncService.buildUploadPlan({ parseResult, name: 'U', format: 'swagger2', branch: 'both', serviceRootPath: '/srv' })
+    expect(Object.keys(JSON.parse(plan[0].json).paths)).toEqual(['/managed/srv/users'])
+    expect(Object.keys(JSON.parse(plan[1].json).paths)).toEqual(['/srv/users'])
+  })
+
+  it('postman format carries the managed prefix too', () => {
+    const plan = SyncService.buildUploadPlan({ parseResult, name: 'U', format: 'postman', branch: 'iapi' })
+    const collection = JSON.parse(plan[0].json)
+    const segments = collection.item.flatMap((i: any) => i.request.url.path)
+    expect(segments.some((s: any) => String(s).includes('managed'))).toBe(true)
+  })
+})

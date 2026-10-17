@@ -1,22 +1,6 @@
 import * as vscode from 'vscode'
 import * as crypto from 'crypto'
 
-/**
- * Derive exactly 16 bytes from a credential string for AES-128-CBC.
- *
- * MeterSphere access/secret keys are normally 16 ASCII characters, and the
- * server derives its key/IV as the raw UTF-8 bytes of the stored credentials.
- * When the input is already 16 bytes, this returns those bytes VERBATIM
- * (no hashing, padding, or truncation) so live-server authentication is
- * byte-for-byte unchanged.
- *
- * For any other length (which can never authenticate against a real server,
- * since the server uses the credential's raw 16 bytes), this produces a
- * deterministic 16-byte buffer instead of letting `crypto.createCipheriv`
- * throw an opaque "Invalid key length" / "Invalid IV length" error:
- * - longer than 16 bytes → the first 16 bytes (`subarray(0, 16)`)
- * - shorter than 16 bytes → zero-padded to 16 bytes
- */
 export function toAes128Bytes(credential: string): Buffer {
   const raw = Buffer.from(credential, 'utf8')
   if (raw.length === 16) {
@@ -113,7 +97,22 @@ export class SettingsManager {
   }
 
   static getServerVersion(): string {
-    return vscode.workspace.getConfiguration().get<string>(SettingsManager.SERVER_VERSION_KEY) ?? 'v3'
+    return vscode.workspace.getConfiguration().get<string>(SettingsManager.SERVER_VERSION_KEY) ?? 'auto'
+  }
+
+  /** In-memory session cache for the probed server version ('auto' mode). */
+  private static probedServerVersion: 'v2' | 'v3' | undefined
+
+  static getCachedServerVersion(): 'v2' | 'v3' | undefined {
+    return SettingsManager.probedServerVersion
+  }
+
+  static setCachedServerVersion(version: 'v2' | 'v3'): void {
+    SettingsManager.probedServerVersion = version
+  }
+
+  static resetServerVersionCache(): void {
+    SettingsManager.probedServerVersion = undefined
   }
 
   static isRejectUnauthorized(): boolean {

@@ -1,0 +1,5 @@
+{
+  "rules": [
+    { "matchOn": "className", "pattern": "LegacyController", "branch": "iapi" }
+  ]
+}

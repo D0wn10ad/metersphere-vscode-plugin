@@ -24,6 +24,8 @@ export interface ParsedApi {
   securityRequirement?: string;
   methodName?: string;
   className?: string;
+  /** Raw Javadoc `@category` (method-level preferred, class-level fallback); validated by categoryResolver. */
+  category?: string;
 }
 
 export interface ParsedParameter {
@@ -125,6 +127,114 @@ function extractAnnotationValueAny(content: string, ...keys: string[]): string |
   return null;
 }
 
+// String-literal-aware: parens inside "..." / '...' do not affect depth.
+function findMatchingParen(code: string, openIdx: number): number {
+  let depth = 0;
+  let inStr: string | null = null;
+  for (let i = openIdx; i < code.length; i++) {
+    const ch = code[i];
+    if (inStr) {
+      if (ch === '\\') { i++; continue; }
+      if (ch === inStr) inStr = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") { inStr = ch; continue; }
+    if (ch === '(') depth++;
+    else if (ch === ')') {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+function buildProtectedMask(code: string): Uint8Array {
+  const mask = new Uint8Array(code.length);
+  const n = code.length;
+  let i = 0;
+  while (i < n) {
+    const ch = code[i];
+    const next = code[i + 1];
+    if (ch === '/' && next === '/') {
+      while (i < n && code[i] !== '\n') { mask[i] = 1; i++; }
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      mask[i] = 1; mask[i + 1] = 1; i += 2;
+      while (i < n && !(code[i] === '*' && code[i + 1] === '/')) { mask[i] = 1; i++; }
+      if (i < n) { mask[i] = 1; if (i + 1 < n) mask[i + 1] = 1; i += 2; }
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      const quote = ch;
+      mask[i] = 1; i++;
+      while (i < n) {
+        if (code[i] === '\\') { mask[i] = 1; if (i + 1 < n) mask[i + 1] = 1; i += 2; continue; }
+        mask[i] = 1;
+        if (code[i] === quote) { i++; break; }
+        i++;
+      }
+      continue;
+    }
+    i++;
+  }
+  return mask;
+}
+
+interface AnnotationHit {
+  index: number;
+  content: string;
+}
+
+function findAnnotationHits(code: string, name: string, mask: Uint8Array): AnnotationHit[] {
+  const hits: AnnotationHit[] = [];
+  const regex = new RegExp(`@${name}\\b`, 'g');
+  let m: RegExpExecArray | null;
+  while ((m = regex.exec(code)) !== null) {
+    if (mask[m.index]) continue;
+    let content = '';
+    let j = m.index + m[0].length;
+    while (j < code.length && /\s/.test(code[j])) j++;
+    if (code[j] === '(') {
+      const close = findMatchingParen(code, j);
+      if (close >= 0) content = code.substring(j + 1, close);
+    }
+    hits.push({ index: m.index, content });
+  }
+  return hits;
+}
+
+function findMethodSignatureStart(code: string, from: number): number {
+  let i = from;
+  while (i < code.length) {
+    while (i < code.length && /\s/.test(code[i])) i++;
+    if (code[i] !== '@') break;
+    i++;
+    while (i < code.length && /[\w.]/.test(code[i])) i++;
+    while (i < code.length && /\s/.test(code[i])) i++;
+    if (code[i] === '(') {
+      const close = findMatchingParen(code, i);
+      i = close >= 0 ? close + 1 : code.length;
+    }
+  }
+  return i;
+}
+
+function nearestAnnotationValue(
+  hits: AnnotationHit[],
+  windowStart: number,
+  windowEnd: number,
+  extract: (content: string) => string | null
+): string | null {
+  const inWindow = hits.filter(h => h.index >= windowStart && h.index < windowEnd);
+  inWindow.sort((a, b) => b.index - a.index);
+  for (const hit of inWindow) {
+    const value = extract(hit.content);
+    if (value) return value;
+  }
+  return null;
+}
+
 function extractValidationConstraints(annotationName: string, annotationContent: string): ValidationConstraint | null {
   if (!annotationName) return null;
   const type = annotationName.replace('@', '');
@@ -201,6 +311,42 @@ const ANNOTATION_PATTERNS = {
   validated: /@Validated(?:\([^)]*\))?/g,
 };
 
+/** Extract the raw `@category <value>` from a Javadoc block, if present. */
+function extractJavadocCategoryFromBlock(block: string): string | undefined {
+  const m = /@category\s+([A-Za-z0-9_.-]+)/.exec(block);
+  return m ? m[1] : undefined;
+}
+
+/**
+ * Nearest Javadoc `@category` above `anchorIdx` (a mapping-annotation index).
+ * The Javadoc must be contiguous with the annotation — no `}` between its end
+ * and the anchor — so a previous method's Javadoc is never picked up.
+ */
+function findMethodJavadocCategory(code: string, anchorIdx: number): string | undefined {
+  const windowStart = Math.max(0, anchorIdx - 400);
+  const window = code.slice(windowStart, anchorIdx);
+  const endIdx = window.lastIndexOf('*/');
+  if (endIdx < 0) return undefined;
+  const blockStart = window.lastIndexOf('/**', endIdx);
+  if (blockStart < 0) return undefined;
+  const between = window.slice(endIdx + 2);
+  if (between.includes('}')) return undefined; // crossed a method boundary
+  return extractJavadocCategoryFromBlock(window.slice(blockStart, endIdx + 2));
+}
+
+/** Class-level Javadoc `@category` (contiguous Javadoc immediately before the class declaration). */
+function findClassJavadocCategory(code: string, classDeclIdx: number): string | undefined {
+  const windowStart = Math.max(0, classDeclIdx - 600);
+  const window = code.slice(windowStart, classDeclIdx);
+  const endIdx = window.lastIndexOf('*/');
+  if (endIdx < 0) return undefined;
+  const blockStart = window.lastIndexOf('/**', endIdx);
+  if (blockStart < 0) return undefined;
+  const between = window.slice(endIdx + 2);
+  if (/[};]/.test(between)) return undefined; // crossed a boundary
+  return extractJavadocCategoryFromBlock(window.slice(blockStart, endIdx + 2));
+}
+
 export class JavaParser {
   static parseSource(code: string, uri: string): ParseResult {
     const result: ParseResult = { classes: [], apis: [] };
@@ -218,6 +364,10 @@ export class JavaParser {
 
     const classMatch = code.match(/class\s+(\w+)/);
     const className = classMatch ? classMatch[1] : 'Unknown';
+    const classDeclIdx = classMatch?.index;
+    const classCategory = typeof classDeclIdx === 'number' && classDeclIdx > 0
+      ? findClassJavadocCategory(code, classDeclIdx)
+      : undefined;
 
     // Anchor the class-body boundary to the SAME class declaration used for
     // className — a bare indexOf('class') can land inside a string, a comment,
@@ -234,6 +384,10 @@ export class JavaParser {
       ? extractPathFromAnnotation(requestMappingExec[1]) || ''
       : '';
 
+    const protectedMask = buildProtectedMask(code);
+    const operationHits = findAnnotationHits(code, 'Operation', protectedMask);
+    const apiOperationHits = findAnnotationHits(code, 'ApiOperation', protectedMask);
+    const descriptionHits = findAnnotationHits(code, 'Description', protectedMask);
     const methods = [
       { regex: ANNOTATION_PATTERNS.getMapping, method: 'GET' as const },
       { regex: ANNOTATION_PATTERNS.postMapping, method: 'POST' as const },
@@ -244,9 +398,6 @@ export class JavaParser {
 
     // One pass per annotation kind up front; the per-method loops below walk
     // these arrays instead of rescanning the whole file for every match.
-    const operationMatches = collectAnnotationMatches(code, /@Operation(?:\s*\(([^)]*)\))?/);
-    const apiOperationMatches = collectAnnotationMatches(code, /@ApiOperation(?:\s*\(([^)]*)\))?/);
-    const descriptionMatches = collectAnnotationMatches(code, /@Description(?:\s*\(([^)]*)\))?/);
 
     const parsedClass: ParsedClass = {
       name: className,
@@ -259,6 +410,7 @@ export class JavaParser {
     for (const { regex, method } of methods) {
       let match;
       while ((match = regex.exec(code)) !== null) {
+        if (protectedMask[match.index]) continue;
         const annotationContent = match[1] || '';
         let path = extractPathFromAnnotation(annotationContent);
         if (!path) path = '';
@@ -269,6 +421,7 @@ export class JavaParser {
           fullPath: basePath + path,
           parameters: [],
           position: { line: 0, column: match.index },
+          category: findMethodJavadocCategory(code, match.index) ?? classCategory,
         };
 
         let methodEnd = -1;
@@ -293,40 +446,32 @@ export class JavaParser {
           methodEnd = nextAnnotation > 0 ? nextAnnotation : code.length;
         }
         
-        // Priority chain: @Operation(summary) > @ApiOperation(value|summary) > path
-        for (const op of operationMatches) {
-          if (op.index < match.index && match.index - op.index < 200) {
-            const summary = extractOperationValue(op.content, 'summary');
-            if (summary) {
-              api.summary = summary;
-              break;
-            }
-          }
+        const methodBodyArea = code.substring(Math.max(0, match.index - 200), methodEnd > 0 ? methodEnd : code.length);
+
+        // Priority chain: @Operation(summary) > @ApiOperation(value|summary) > @Description > path
+        const signatureStart = findMethodSignatureStart(code, annotationEnd);
+        const windowStart = Math.max(0, match.index - 200);
+
+        const opSummary = nearestAnnotationValue(
+          operationHits, windowStart, signatureStart,
+          c => extractOperationValue(c, 'summary')
+        );
+        if (opSummary) api.summary = opSummary;
+
+        if (!api.summary) {
+          const apiOpSummary = nearestAnnotationValue(
+            apiOperationHits, windowStart, signatureStart,
+            extractSummaryFromApiOperation
+          );
+          if (apiOpSummary) api.summary = apiOpSummary;
         }
 
         if (!api.summary) {
-          for (const apiOp of apiOperationMatches) {
-            if (apiOp.index < match.index && match.index - apiOp.index < 200) {
-              const summary = extractSummaryFromApiOperation(apiOp.content);
-              if (summary) {
-                api.summary = summary;
-                break;
-              }
-            }
-          }
-        }
-
-        // @Description fallback (swagger-core)
-        if (!api.summary) {
-          for (const desc of descriptionMatches) {
-            if (desc.index < match.index && match.index - desc.index < 200) {
-              const description = extractDescription(desc.content);
-              if (description) {
-                api.summary = description;
-                break;
-              }
-            }
-          }
+          const desc = nearestAnnotationValue(
+            descriptionHits, windowStart, signatureStart,
+            c => extractAnnotationValue(c, 'value', 'description')
+          );
+          if (desc) api.summary = desc;
         }
 
         if (!api.summary) {
@@ -538,6 +683,7 @@ export class JavaParser {
     const requestMappingMethodRegex = new RegExp(ANNOTATION_PATTERNS.requestMapping.source, 'g');
     while ((rmMatch = requestMappingMethodRegex.exec(code)) !== null) {
       if (rmMatch.index < classBodyStart) continue;
+      if (protectedMask[rmMatch.index]) continue;
       const rmContent = rmMatch[1] || '';
       let path = extractPathFromAnnotation(rmContent);
       if (!path) path = '';
@@ -558,6 +704,7 @@ export class JavaParser {
         fullPath: basePath + path,
         parameters: [],
         position: { line: 0, column: rmMatch.index },
+        category: findMethodJavadocCategory(code, rmMatch.index) ?? classCategory,
       };
 
       const annotationEnd = rmMatch.index + rmMatch[0].length;
@@ -578,20 +725,23 @@ export class JavaParser {
         methodEnd = nextAnnotation > 0 ? nextAnnotation : code.length;
       }
 
-      for (const op of operationMatches) {
-        if (op.index < rmMatch.index && rmMatch.index - op.index < 200) {
-          const summary = extractOperationValue(op.content, 'summary');
-          if (summary) { api.summary = summary; break; }
-        }
-      }
+      const methodBodyArea = code.substring(Math.max(0, rmMatch.index - 200), methodEnd > 0 ? methodEnd : code.length);
+
+      const signatureStart = findMethodSignatureStart(code, annotationEnd);
+      const windowStart = Math.max(0, rmMatch.index - 200);
+
+      const opSummary = nearestAnnotationValue(
+        operationHits, windowStart, signatureStart,
+        c => extractOperationValue(c, 'summary')
+      );
+      if (opSummary) api.summary = opSummary;
 
       if (!api.summary) {
-        for (const apiOp of apiOperationMatches) {
-          if (apiOp.index < rmMatch.index && rmMatch.index - apiOp.index < 200) {
-            const summary = extractSummaryFromApiOperation(apiOp.content);
-            if (summary) { api.summary = summary; break; }
-          }
-        }
+        const apiOpSummary = nearestAnnotationValue(
+          apiOperationHits, windowStart, signatureStart,
+          extractSummaryFromApiOperation
+        );
+        if (apiOpSummary) api.summary = apiOpSummary;
       }
 
       if (!api.summary) api.summary = `${method} ${path || '/'}`;
