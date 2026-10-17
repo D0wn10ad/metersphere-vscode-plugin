@@ -1,8 +1,8 @@
 {
   "name": "metersphere-vscode-extension",
   "displayName": "MeterSphere VSCode",
-  "description": "VSCode extension for MeterSphere v2 APIs — sync Java Spring controllers, browse projects, manage test resources, and debug API requests from your editor",
-  "version": "0.2.9",
+  "description": "VSCode extension for MeterSphere v2 APIs \u2014 sync Java Spring controllers, browse projects, manage test resources, and debug API requests from your editor",
+  "version": "0.3.0",
   "publisher": "metersphere",
   "icon": "media/ms_big_logo.png",
   "repository": {
@@ -60,12 +60,12 @@
         "metersphere.accessKey": {
           "type": "string",
           "default": "",
-          "description": "MeterSphere Access Key (from User Settings → Token)"
+          "description": "MeterSphere Access Key (from User Settings \u2192 Token)"
         },
         "metersphere.secretKey": {
           "type": "string",
           "default": "",
-          "description": "MeterSphere Secret Key (from User Settings → Token)"
+          "description": "MeterSphere Secret Key (from User Settings \u2192 Token)"
         },
         "metersphere.workspaceId": {
           "type": "string",
@@ -93,12 +93,13 @@
         },
         "metersphere.serverVersion": {
           "type": "string",
-          "default": "v3",
           "enum": [
+            "auto",
             "v2",
             "v3"
           ],
-          "description": "MeterSphere server version the upload targets (affects coverModule/coverData mode)"
+          "default": "auto",
+          "description": "MeterSphere server version used for the upload payload. 'auto' probes GET /system/version/current (v3 is experimental/untested); 'v2'/'v3' force the payload shape."
         },
         "metersphere.rejectUnauthorized": {
           "type": "boolean",
@@ -112,15 +113,13 @@
         },
         "metersphere.defaultBranch": {
           "type": "string",
-          "enum": ["eapi", "iapi", "none"],
+          "enum": [
+            "eapi",
+            "iapi",
+            "none"
+          ],
           "default": "eapi",
           "description": "Fallback sync branch when no manual override, runtime rule, Javadoc @category, or annotation tag matches. 'none' keeps the API in the selected module without branch URL shaping."
-        },
-        "metersphere.serverVersion": {
-          "type": "string",
-          "enum": ["auto", "v2", "v3"],
-          "default": "auto",
-          "description": "MeterSphere server version used for the upload payload. 'auto' probes GET /system/version/current (v3 is experimental/untested); 'v2'/'v3' force the payload shape."
         }
       }
     },
