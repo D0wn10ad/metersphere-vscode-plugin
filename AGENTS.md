@@ -249,6 +249,8 @@ NOTE on phases:
 
 This extension supports multiple ways to sync Java Spring Controllers to MeterSphere:
 
+The full branch-resolution and upload flow (how an API's path and branch are decided) is charted in README → **Branch Routing (eapi / iapi)**; the rules file location is `metersphere.rulesPath` (default `.metersphere/rules.json`).
+
 ### Supported Actions
 
 | Action | Trigger | Behavior |
@@ -414,3 +416,12 @@ Behind the v2 gateway, single- and double-`/api` prefixes hit **different backen
 - Double prefix `/api/api/project/list/{goPage}/{pageSize}` → hits the **api-test** service (`ExtProjectController`; class-level `@RequestMapping()` with an empty prefix, method-level full literal path) → returns **all** projects in the workspace.
 - Therefore: an empty list from the single prefix does **not** mean "no projects exist". When investigating projects, always query the double-prefix paginated list first; never assert "zero projects" from a single-prefix empty result.
 - Relevance to this extension: the Navigator's project discovery currently uses the single prefix (`/api/project/list/related`), so it can under-report projects for non-member users. Switching project enumeration to the double-prefix paginated list is a candidate fix (see §14 P2 "userId in project list").
+
+## 16) Parser Architecture (CST-first dual engine)
+
+Java parsing runs through `src/metersphere/javaParserDispatch.ts`:
+
+- **Primary:** the CST engine in `src/metersphere/javaAst/` (vendored `java-parser` bundle in `vendor/java-parser.cjs`; rebuild with `scripts/build-cst-vendor.mjs`). Parses controllers, annotations (nested, escaped strings), parameters (varargs-aware, Spring required semantics), and Javadoc from a real syntax tree. The former `javaParserAst.ts` was deleted — the CST stack replaced it.
+- **Fallback:** the regex engine `JavaParser.parseSource` (`src/metersphere/javaParser.ts`), used ONLY when (a) the CST throws (malformed Java) or (b) the CST returns zero APIs while the source still declares a controller annotation. Zero APIs on a non-controller file is a correct empty result, not a failure. Every fallback is DebugLogger-logged with the reason and URI — never silent.
+- **Regex-engine hardening:** order-independent annotation lookup (windowed nearest-annotation over `[mappingIdx-200, signatureStart)`, paren-depth- and string-literal-aware capture, comment/string masking) — `@Operation` resolves whether it sits above or below `@GetMapping`.
+- **Equivalence gate:** `test/javaParser.test.ts` runs a shared expectation table against BOTH engines via `parseJavaWithEngine('cst' | 'regex')`; every row must pass identically on both, including the C1 annotation-order rows. Current suite: 39 suites / 704 tests.

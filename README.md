@@ -126,9 +126,53 @@ Run `MeterSphere: Show Debugger` — select method, enter path and body, execute
 
 Each synced API is routed into an `eapi` or `iapi` branch. The branch is expressed in the **URL shape only** — the module is always the one you pick in the Sync panel (no module-tree manipulation).
 
+**How the API path is decided:**
+
+```mermaid
+flowchart TD
+    A[Parse Java Controller/API] --> B["Extract method/class annotations, Javadoc, paths"]
+    B --> C["Apply C1: Order-independent annotation lookup"]
+    C --> D{"Manual override set?"}
+    D -- Yes --> E[Use manual branch]
+    D -- No --> F{"Rules match?"}
+    F -- Yes --> G["Use rule branch (first match wins)"]
+    F -- No --> H{"Javadoc @category (eapi|iapi|both) preferred; annotation tags fallback?"}
+    H -- Yes --> I[Use annotation branch]
+    H -- No --> J{"customization rule JSON placement enabled?"}
+    J -- Yes --> K[Default to BOTH]
+    J -- No --> L[Use metersphere.defaultBranch]
+    E --> M[Effective branch]
+    G --> M
+    I --> M
+    K --> M
+    L --> M
+
+    M --> N{"Effective branch == both AND customization rule JSON placement enabled?"}
+    N -- No --> O["Build single upload entry (URL composed; module = user-selected; no tree tags)"]
+    N -- Yes --> P[Build TWO upload entries]
+    P --> P1["Entry 1: branch iapi, path = /managed/<service-root-path>/<specific>"]
+    P --> P2["Entry 2: branch eapi, path = /<service-root-path>/<specific>"]
+
+    O --> Q[Determine specific interface path]
+    P1 --> Q1["Compose <specific>: prefer UI Context Path if set (authoritative) else derive from rules/service-root-path"]
+    P2 --> Q1
+
+    Q --> R
+    Q1 --> R["Resolve service-root-path from application.yml: webflux-first spring.application.webflux.base-path, else server.servlet.context-path; profile-aware, multi-doc, no silent env expansion; empty on conflict"]
+    R --> S["Apply path precedence: UI Context Path authoritative over service-root-path"]
+    S --> T["Normalize paths, compose final paths keys"]
+
+    T --> U{"Server version?"}
+    U -- v2 --> V["POST upload entries (1 or 2). Verify via post-import listing; URLs differ per branch so no URL_REPEATABLE needed"]
+    U -- v3 --> W["POST upload entries as planned; do NOT assume duplicates (paths may differ). v3 behavior experimental/untested; report actual outcome"]
+
+    V --> X["Post-import report: resolved paths, 未规划接口 fallbacks, materialization status"]
+    W --> X
+```
+
 **Resolution order (first match wins):**
 1. Manual **Branch** selector in the Sync panel (`auto` | `eapi` | `iapi` | `both` | `none`)
-2. Runtime rules from `metersphere.rulesPath` JSON — entries `{ "matchOn": "methodAndPathPrefix|pathRegex|className|javadocCategory|annotationTag|catchAll", "pattern": "...", "branch": "eapi|iapi|both" }`, first match wins, `catchAll` evaluated last
+2. Runtime rules from the customization rule JSON — file location configured by `metersphere.rulesPath` (default: `.metersphere/rules.json`, workspace-relative) — entries `{ "matchOn": "methodAndPathPrefix|pathRegex|className|javadocCategory|annotationTag|catchAll", "pattern": "...", "branch": "eapi|iapi|both" }`, first match wins, `catchAll` evaluated last
 3. Javadoc `@category eapi|iapi|both` (preferred marker; method-level overrides class-level)
 4. Annotation tags (`@Operation(tags = {"iapi"})`)
 5. `metersphere.defaultBranch` — or `both` when placement is enabled in the rules file
@@ -139,7 +183,7 @@ Each synced API is routed into an `eapi` or `iapi` branch. The branch is express
 
 **Server versions:** `metersphere.serverVersion` `auto` probes `GET /system/version/current` (200 = v3, 404 = v2). **v3 is experimental/untested** — the plugin reports actual post-import outcomes instead of assuming duplicate rows.
 
-> Keep-in-view: a `java-ast` based parser rewrite lives on a separate branch and is not part of this extension yet.
+> Parser note: parsing is CST-first with a deterministic regex fallback — see the [Parser](#parser) section.
 
 ## Sync Flow
 
@@ -188,6 +232,8 @@ Tests use a mock VSCode stack: `src/vscode.d.ts` and `test/vscode-mock-setup.js`
 | API Endpoints in Navigator | ✅ Complete | API definitions under modules |
 | Debugger Polish & Integration | ✅ Complete | VSCode theme CSS, message queuing, upload duplication guard |
 | Header/Naming Fixes | ✅ Complete | @RequestHeader propagation, API naming precedence (Operation > Javadoc > path) |
+| Java Parser (dual engine) | ✅ Complete | CST-first dispatch (`javaParserDispatch.ts`) with deterministic regex fallback; shared dual-engine expectation gate |
+| Sync Name/Path/Branch Routing | ✅ Complete | Order-independent annotation lookup; context path in both formats; runtime rules JSON; `@category`-preferred eapi/iapi/both routing with dual upload; version probe + post-import verification; v3 experimental/untested |
 
 ## Recent Fixes
 
@@ -200,6 +246,15 @@ Tests use a mock VSCode stack: `src/vscode.d.ts` and `test/vscode-mock-setup.js`
 | Header propagation | `@RequestHeader` names now export into Postman/MeterSphere request headers instead of being dropped. |
 | Javadoc enrichment | `enhanceWithJavadoc` only fills summary when one is missing, preserving explicit `@Operation(summary)`. |
 | Tests | Updated to verify header extraction and naming precedence across parser paths and export logic. All pass. |
+
+## Parser
+
+Java sources are parsed by **two engines behind one dispatcher** (`src/metersphere/javaParserDispatch.ts`):
+
+1. **CST engine (primary)** — `src/metersphere/javaAst/` built on the vendored `java-parser` bundle (`vendor/java-parser.cjs`, rebuilt via `scripts/build-cst-vendor.mjs`): full syntax-tree parsing of controllers, annotations (nested + escaped strings), parameters (varargs-aware, Spring required semantics), and Javadoc.
+2. **Regex engine (fallback)** — `src/metersphere/javaParser.ts`, used only when the CST throws (malformed Java) or returns zero APIs while the source still declares a controller annotation (a suspicious empty). A zero-API result on a non-controller file is a correct empty, not a fallback. Every fallback is logged with its reason — never silent. The regex engine uses order-independent annotation lookup (windowed nearest-annotation, paren-depth-aware capture, string-literal/comment masking), so `@Operation` is found whether it sits above or below `@GetMapping`.
+
+**Dual-engine equivalence gate:** `test/javaParser.test.ts` holds a shared expectation table where every row runs against **both** engines (`parseJavaWithEngine('cst' | 'regex')`) and must produce identical results — including annotation-order rows proving order-independent lookup on both engines.
 
 ## Architecture
 
