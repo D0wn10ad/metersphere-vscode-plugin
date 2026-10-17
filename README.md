@@ -130,44 +130,55 @@ Each synced API is routed into an `eapi` or `iapi` branch. The branch is express
 
 ```mermaid
 flowchart TD
-    A[Parse Java Controller/API] --> B["Extract method/class annotations, Javadoc, paths"]
-    B --> C["Apply C1: Order-independent annotation lookup"]
-    C --> D{"Manual override set?"}
-    D -- Yes --> E[Use manual branch]
-    D -- No --> F{"Rules match?"}
-    F -- Yes --> G["Use rule branch (first match wins)"]
-    F -- No --> H{"Javadoc @category (eapi|iapi|both) preferred; annotation tags fallback?"}
-    H -- Yes --> I[Use annotation branch]
-    H -- No --> J{"customization rule JSON placement enabled?"}
-    J -- Yes --> K[Default to BOTH]
-    J -- No --> L[Use metersphere.defaultBranch]
-    E --> M[Effective branch]
-    G --> M
-    I --> M
-    K --> M
-    L --> M
+    subgraph SG1["1. Parse"]
+        A[Parse Java controller] --> B[Extract annotations, Javadoc, paths]
+        B --> C["C1: order-independent annotation lookup"]
+    end
 
-    M --> N{"Effective branch == both AND customization rule JSON placement enabled?"}
-    N -- No --> O["Build single upload entry (URL composed; module = user-selected; no tree tags)"]
-    N -- Yes --> P[Build TWO upload entries]
-    P --> P1["Entry 1: branch iapi, path = /managed/<service-root-path>/<specific>"]
-    P --> P2["Entry 2: branch eapi, path = /<service-root-path>/<specific>"]
+    subgraph SG2["2. Resolve branch"]
+        C --> D{Manual override set?}
+        D -- Yes --> E[Use manual branch]
+        D -- No --> F{Rules match?}
+        F -- Yes --> G["Rule branch — first match wins"]
+        F -- No --> H{Javadoc @category preferred, annotation tags fallback?}
+        H -- Yes --> I[Use annotation branch]
+        H -- No --> J{Customization rule JSON placement enabled?}
+        J -- Yes --> K[Default to BOTH]
+        J -- No --> L[metersphere.defaultBranch]
+        E --> M[Effective branch]
+        G --> M
+        I --> M
+        K --> M
+        L --> M
+    end
 
-    O --> Q[Determine specific interface path]
-    P1 --> Q1["Compose <specific>: prefer UI Context Path if set (authoritative) else derive from rules/service-root-path"]
-    P2 --> Q1
+    subgraph SG3["3. Compose path"]
+        M --> N{"both AND placement enabled?"}
+        N -- No --> O["Single upload entry — module = user-selected, no tree tags"]
+        N -- Yes --> P[Build TWO upload entries]
+        P --> P1["iapi: /managed/<service-root-path>/<specific>"]
+        P --> P2["eapi: /<service-root-path>/<specific>"]
+        O --> Q[Determine specific interface path]
+        P1 --> Q1["Compose specific: UI Context Path authoritative, else rules / service-root-path"]
+        P2 --> Q1
+        Q --> R["Resolve service-root-path from application.yml — webflux-first, profile-aware, multi-doc, no silent env expansion, empty on conflict"]
+        Q1 --> R
+        R --> S["Precedence: UI Context Path over service-root-path"]
+        S --> T[Normalize and compose final paths keys]
+    end
 
-    Q --> R
-    Q1 --> R["Resolve service-root-path from application.yml: webflux-first spring.application.webflux.base-path, else server.servlet.context-path; profile-aware, multi-doc, no silent env expansion; empty on conflict"]
-    R --> S["Apply path precedence: UI Context Path authoritative over service-root-path"]
-    S --> T["Normalize paths, compose final paths keys"]
+    subgraph SG4["4. Upload and verify"]
+        T --> U{Server version?}
+        U -- v2 --> V["POST 1–2 entries, verify via post-import listing — no URL_REPEATABLE needed"]
+        U -- v3 --> W["POST as planned — experimental/untested, report actual outcome"]
+        V --> X["Post-import report: resolved paths, 未规划接口 fallbacks, materialization"]
+        W --> X
+    end
 
-    T --> U{"Server version?"}
-    U -- v2 --> V["POST upload entries (1 or 2). Verify via post-import listing; URLs differ per branch so no URL_REPEATABLE needed"]
-    U -- v3 --> W["POST upload entries as planned; do NOT assume duplicates (paths may differ). v3 behavior experimental/untested; report actual outcome"]
-
-    V --> X["Post-import report: resolved paths, 未规划接口 fallbacks, materialization status"]
-    W --> X
+    classDef decision fill:#fff3cd,stroke:#b8860b,color:#1a1a1a
+    classDef report fill:#e8f5e9,stroke:#2e7d32,color:#1a1a1a
+    class D,F,H,J,N,U decision
+    class X report
 ```
 
 **Resolution order (first match wins):**
