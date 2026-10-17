@@ -4,7 +4,9 @@ export interface EnvironmentVariables {
 
 export function resolveVariables(template: string, vars: EnvironmentVariables): string {
   return template.replace(/\{\{(\w+)\}\}/g, (match, name: string) => {
-    return name in vars ? vars[name] : match
+    // Own-key check only: `name in vars` is true for prototype members like
+    // `toString`, which would resolve {{toString}} to a function's string form.
+    return Object.prototype.hasOwnProperty.call(vars, name) ? vars[name] : match
   })
 }
 
@@ -15,8 +17,13 @@ export function parseEnvVariables(raw: string | null | undefined): EnvironmentVa
     if (Array.isArray(parsed)) {
       const result: EnvironmentVariables = {}
       for (const item of parsed) {
-        if (item.name && item.value !== undefined) {
-          result[item.name] = String(item.value)
+        // Shape-check each element: a null/primitive entry must be skipped,
+        // not dereferenced.
+        if (item && typeof item === 'object' && typeof item.name === 'string' && item.value !== undefined) {
+          const value = stringifyEnvValue(item.value);
+          if (value !== undefined) {
+            result[item.name] = value;
+          }
         }
       }
       return result
@@ -24,7 +31,10 @@ export function parseEnvVariables(raw: string | null | undefined): EnvironmentVa
     if (typeof parsed === 'object' && parsed !== null) {
       const result: EnvironmentVariables = {}
       for (const key of Object.keys(parsed)) {
-        result[key] = String(parsed[key])
+        const value = stringifyEnvValue(parsed[key])
+        if (value !== undefined) {
+          result[key] = value
+        }
       }
       return result
     }
@@ -32,4 +42,11 @@ export function parseEnvVariables(raw: string | null | undefined): EnvironmentVa
   } catch {
     return {}
   }
+}
+
+/** Stringify a variable value; non-primitives are dropped (never "[object Object]"). */
+function stringifyEnvValue(value: unknown): string | undefined {
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  return undefined
 }

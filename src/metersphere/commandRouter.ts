@@ -9,6 +9,7 @@ import { DebugLogger } from './debugLogger'
 import { SidebarView } from './views/sidebarView'
 import { WebViewController } from './webviewController'
 import { JavaFileScanner } from './javaFileScanner'
+import { runScanWithTerminalMessage } from './scanLifecycle'
 
 export class CommandRouter {
   static registerAll(
@@ -89,48 +90,85 @@ export class CommandRouter {
 
         deps.connectionManager.update(ConnectionState.Connecting)
 
-        const result = await deps.connectionManager.testConnection(
-          url.trim(),
-          accessKey.trim(),
-          secretKey.trim()
-        )
+        // Outermost guard: no path may strand Connecting or reject unhandled.
+        try {
+          const result = await deps.connectionManager.testConnection(
+            url.trim(),
+            accessKey.trim(),
+            secretKey.trim()
+          )
 
-        if (!result.success) {
-          deps.connectionManager.update(ConnectionState.Disconnected)
+          if (!result.success) {
+            deps.connectionManager.update(ConnectionState.Disconnected)
+            try {
+              vscode.window.showErrorMessage(
+                'Connection failed: ' + (result.error ?? 'Unknown error')
+              )
+            } catch {
+              // notification can throw if VSCode is shutting down
+            }
+            return
+          }
+
+          SettingsManager.setMsUrl(url.trim())
+          SettingsManager.setAccessKey(accessKey.trim())
+          SettingsManager.setSecretKey(secretKey.trim())
+
+          // New server → old workspace/project IDs are meaningless ('' = unset).
+          SettingsManager.setWorkspaceId('')
+          SettingsManager.setProjectId('')
+
+          deps.connectionManager.update(ConnectionState.Connected, result.url)
+          NavigatorEngine.clearCache()
+          const roots = await NavigatorEngine.discoverWorkspaces(deps.httpRequest as any)
+          deps.navigatorProvider.setRoots(roots)
+          vscode.window.showInformationMessage('MeterSphere configured successfully!')
+        } catch (error) {
+          // Documented semantic choice: ANY throw settles on Disconnected —
+          // including discoverWorkspaces failing AFTER settings were saved.
+          // Disconnected keeps statusBarMenu (→ Refresh Navigator, which
+          // restores Connected on success) available as the recovery path.
+          deps.connectionManager.update(ConnectionState.Disconnected, String(error))
           try {
             vscode.window.showErrorMessage(
-              'Connection failed: ' + (result.error ?? 'Unknown error')
+              'Configure failed: ' + (error instanceof Error ? error.message : String(error))
             )
           } catch {
             // notification can throw if VSCode is shutting down
           }
-          return
         }
-
-        SettingsManager.setMsUrl(url.trim())
-        SettingsManager.setAccessKey(accessKey.trim())
-        SettingsManager.setSecretKey(secretKey.trim())
-
-        deps.connectionManager.update(ConnectionState.Connected, result.url)
-        NavigatorEngine.clearCache()
-        const roots = await NavigatorEngine.discoverWorkspaces(deps.httpRequest as any)
-        deps.navigatorProvider.setRoots(roots)
-        vscode.window.showInformationMessage('MeterSphere configured successfully!')
       })
     )
 
     context.subscriptions.push(
       vscode.commands.registerCommand('metersphere.testConnection', async () => {
         deps.connectionManager.update(ConnectionState.Connecting)
-        const result = await deps.connectionManager.testConnection()
-        if (result.success) {
-          const url = result.url ?? ''
-          let hostname = url
-          try { hostname = new URL(url).hostname } catch { /* use as-is */ }
-          await SidebarView.loadProjectModules()
-          vscode.window.showInformationMessage('Connected to ' + hostname)
-        } else {
-          vscode.window.showErrorMessage('Connection failed: ' + (result.error ?? 'Unknown error'))
+        try {
+          const result = await deps.connectionManager.testConnection()
+          if (result.success) {
+            const url = result.url ?? ''
+            let hostname = url
+            try { hostname = new URL(url).hostname } catch { /* use as-is */ }
+            await SidebarView.loadProjectModules()
+            vscode.window.showInformationMessage('Connected to ' + hostname)
+          } else {
+            vscode.window.showErrorMessage('Connection failed: ' + (result.error ?? 'Unknown error'))
+          }
+        } catch (error) {
+          deps.connectionManager.update(ConnectionState.Disconnected)
+          try {
+            vscode.window.showErrorMessage(
+              'Connection failed: ' + (error instanceof Error ? error.message : String(error))
+            )
+          } catch {
+            // notification can throw if VSCode is shutting down
+          }
+        } finally {
+          // testConnection's "Not configured" early return never calls update,
+          // and a rejection bypasses it entirely — never strand Connecting.
+          if (deps.connectionManager.getState() === ConnectionState.Connecting) {
+            deps.connectionManager.update(ConnectionState.Disconnected)
+          }
         }
       })
     )
@@ -233,65 +271,73 @@ export class CommandRouter {
       vscode.commands.registerCommand('metersphere.uploadFromFileExplorer', async (...args: unknown[]) => {
         let uris: vscode.Uri[] = []
         
-        if (args.length > 0 && args[0] instanceof vscode.Uri) {
-          uris = args as vscode.Uri[]
-        } else if (args.length > 0 && Array.isArray(args[0])) {
-          const firstArg = args[0]
-          if (firstArg.length > 0 && firstArg[0] instanceof vscode.Uri) {
-            uris = firstArg as vscode.Uri[]
+        if (args.length > 0) {
+          const flat: vscode.Uri[] = []
+          const collect = (candidate: unknown): void => {
+            if (candidate instanceof vscode.Uri) {
+              flat.push(candidate)
+            } else if (Array.isArray(candidate)) {
+              for (const item of candidate) collect(item)
+            }
           }
+          for (const arg of args) collect(arg)
+          uris = flat
         }
         
         await SidebarView.showSync()
         
         if (uris.length === 0) {
-          SidebarView.postMessage({ command: 'scanComplete', data: { files: [], error: 'No files selected' } })
+          await runScanWithTerminalMessage({
+            scan: async () => {
+              throw new Error('No files selected')
+            },
+            post: SidebarView.postMessage,
+            label: 'fileExplorer',
+          })
           return
         }
 
         SidebarView.postMessage({ command: 'scanningStarted', data: { message: 'Scanning...' } })
 
-        const filePaths = uris.map(u => (u as any).fsPath || u.path)
-        const isFile = filePaths[0].endsWith('.java')
-        let filesToUpload: string[] = []
-
-        if (isFile && filePaths.length > 1) {
-          filesToUpload = filePaths
-        } else if (isFile) {
-          const projectRoot = await JavaFileScanner.findProjectRoot(filePaths[0])
-          if (projectRoot) {
-            const searchPaths = JavaFileScanner.getCommonProjectPaths(projectRoot)
-            for (const searchPath of searchPaths) {
-              const found = await JavaFileScanner.findJavaFilesInProject(searchPath, (msg: string, count: number) => {
+        await runScanWithTerminalMessage({
+          scan: async () => {
+            const filePaths = [...new Set(
+              uris
+                .map(u => (u as { fsPath?: string }).fsPath || u.path)
+                .filter((p): p is string => typeof p === 'string')
+            )]
+            // Classify EACH selected URI independently: .java files upload
+            // directly, everything else is scanned recursively as a folder
+            // (TC-03: the first URI must not decide for the whole selection).
+            const filesToUpload = new Set<string>()
+            for (const selectedPath of filePaths) {
+              if (selectedPath.endsWith('.java')) {
+                filesToUpload.add(selectedPath)
+                continue
+              }
+              const found = await JavaFileScanner.findJavaFilesInProject(selectedPath, (msg: string, count: number) => {
                 SidebarView.postMessage({ command: 'uploadProgress', data: { message: `${msg} (${count})` } })
               })
-              filesToUpload.push(...found)
+              for (const file of found) {
+                filesToUpload.add(file)
+              }
             }
-            filesToUpload = [...new Set(filesToUpload)]
-          }
-        } else {
-          const scanPath = filePaths[0]
-          const projectRoot = await JavaFileScanner.findProjectRoot(scanPath)
-          if (!projectRoot) {
-            SidebarView.postMessage({ command: 'scanComplete', data: { files: [], error: 'Could not find project root' } })
-            return
-          }
-          const searchPaths = JavaFileScanner.getCommonProjectPaths(projectRoot)
-          for (const searchPath of searchPaths) {
-            const found = await JavaFileScanner.findJavaFilesInProject(searchPath, (msg: string, count: number) => {
-              SidebarView.postMessage({ command: 'uploadProgress', data: { message: `${msg} (${count})` } })
-            })
-            filesToUpload.push(...found)
-          }
-          filesToUpload = [...new Set(filesToUpload)]
-        }
 
-        if (filesToUpload.length === 0) {
-          SidebarView.postMessage({ command: 'scanComplete', data: { files: [], error: 'No @RestController found' } })
-          return
-        }
-
-        SidebarView.postMessage({ command: 'scanComplete', data: { files: filesToUpload } })
+            const result = [...filesToUpload]
+            if (result.length === 0) {
+              throw new Error('No @RestController found')
+            }
+            return result
+          },
+          post: SidebarView.postMessage,
+          label: 'fileExplorer',
+        }).then((scanned: string[]) => {
+          DebugLogger.log('Sync', 'Scan result shape', {
+            count: scanned.length,
+            types: scanned.map((f: unknown) => typeof f).join(','),
+            first: String(scanned[0]).slice(0, 100),
+          })
+        })
       })
     )
 
@@ -305,34 +351,38 @@ export class CommandRouter {
         SidebarView.postMessage({ command: 'scanningStarted', data: { message: `Scanning: ${node.name}...` } })
 
         const projectPath = node.uri.fsPath
-        let filesToUpload: string[] = []
 
-        if (node.type === NodeType.PROJECT) {
-          const projectRoot = await JavaFileScanner.findProjectRoot(projectPath)
-          if (!projectRoot) {
-            SidebarView.postMessage({ command: 'scanComplete', data: { files: [], error: 'Could not find project root (no pom.xml or build.gradle found)' } })
-            return
-          }
+        await runScanWithTerminalMessage({
+          scan: async () => {
+            let filesToUpload: string[] = []
 
-          const searchPaths = JavaFileScanner.getCommonProjectPaths(projectRoot)
-          for (const searchPath of searchPaths) {
-            const foundFiles = await JavaFileScanner.findJavaFilesInProject(searchPath, (msg: string, count: number) => {
-              SidebarView.postMessage({ command: 'uploadProgress', data: { message: `${msg} (${count} files)` } })
-            })
-            filesToUpload.push(...foundFiles)
-          }
+            if (node.type === NodeType.PROJECT) {
+              const projectRoot = await JavaFileScanner.findProjectRoot(projectPath)
+              if (!projectRoot) {
+                throw new Error('Could not find project root (no pom.xml or build.gradle found)')
+              }
 
-          filesToUpload = [...new Set(filesToUpload)]
-        } else {
-          filesToUpload = [projectPath]
-        }
+              const searchPaths = JavaFileScanner.getCommonProjectPaths(projectRoot)
+              for (const searchPath of searchPaths) {
+                const foundFiles = await JavaFileScanner.findJavaFilesInProject(searchPath, (msg: string, count: number) => {
+                  SidebarView.postMessage({ command: 'uploadProgress', data: { message: `${msg} (${count} files)` } })
+                })
+                filesToUpload.push(...foundFiles)
+              }
 
-        if (filesToUpload.length === 0) {
-          SidebarView.postMessage({ command: 'scanComplete', data: { files: [], error: 'No @RestController or @Controller classes found' } })
-          return
-        }
+              filesToUpload = [...new Set(filesToUpload)]
+            } else {
+              filesToUpload = [projectPath]
+            }
 
-        SidebarView.postMessage({ command: 'scanComplete', data: { files: filesToUpload } })
+            if (filesToUpload.length === 0) {
+              throw new Error('No @RestController or @Controller classes found')
+            }
+            return filesToUpload
+          },
+          post: SidebarView.postMessage,
+          label: 'navigator',
+        })
       })
     )
 
@@ -341,56 +391,59 @@ export class CommandRouter {
         await SidebarView.showSync()
         SidebarView.postMessage({ command: 'scanningStarted', data: { message: 'Ready. Choose scan scope...' } })
 
-        const filePath = (uri as any).fsPath || uri.path
-        const isFile = filePath.endsWith('.java')
-        let filesToUpload: string[] = []
-        let scanPath = filePath
+        const filePath = (uri as { fsPath?: string }).fsPath || uri.path
 
-        if (isFile) {
-          const selected = await vscode.window.showQuickPick(
-            [
-              { label: 'This file', description: 'Sync only this Java file', value: 'file' },
-              { label: 'Parent folder', description: 'Scan parent folder recursively', value: 'folder' },
-            ],
-            { placeHolder: 'Choose scan scope' }
-          )
+        await runScanWithTerminalMessage({
+          scan: async () => {
+            const isFile = filePath.endsWith('.java')
+            let filesToUpload: string[] = []
+            let scanPath = filePath
 
-          if (!selected) {
-            SidebarView.postMessage({ command: 'scanComplete', data: { files: [], error: 'Scan cancelled' } })
-            return
-          }
+            if (isFile) {
+              const selected = await vscode.window.showQuickPick(
+                [
+                  { label: 'This file', description: 'Sync only this Java file', value: 'file' },
+                  { label: 'Parent folder', description: 'Scan parent folder recursively', value: 'folder' },
+                ],
+                { placeHolder: 'Choose scan scope' }
+              )
 
-          if (selected.value === 'file') {
-            filesToUpload = [filePath]
-          } else {
-            scanPath = path.dirname(filePath)
-          }
-        }
+              if (!selected) {
+                throw new Error('Scan cancelled')
+              }
 
-        if (filesToUpload.length === 0) {
-          const projectRoot = await JavaFileScanner.findProjectRoot(scanPath)
-          if (!projectRoot) {
-            SidebarView.postMessage({ command: 'scanComplete', data: { files: [], error: 'Could not find project root' } })
-            return
-          }
+              if (selected.value === 'file') {
+                filesToUpload = [filePath]
+              } else {
+                scanPath = path.dirname(filePath)
+              }
+            }
 
-          const searchPaths = JavaFileScanner.getCommonProjectPaths(projectRoot)
-          for (const searchPath of searchPaths) {
-            const foundFiles = await JavaFileScanner.findJavaFilesInProject(searchPath, (msg: string, count: number) => {
-              SidebarView.postMessage({ command: 'uploadProgress', data: { message: `${msg} (${count} files)` } })
-            })
-            filesToUpload.push(...foundFiles)
-          }
+            if (filesToUpload.length === 0) {
+              const projectRoot = await JavaFileScanner.findProjectRoot(scanPath)
+              if (!projectRoot) {
+                throw new Error('Could not find project root')
+              }
 
-          filesToUpload = [...new Set(filesToUpload)]
-        }
+              const searchPaths = JavaFileScanner.getCommonProjectPaths(projectRoot)
+              for (const searchPath of searchPaths) {
+                const foundFiles = await JavaFileScanner.findJavaFilesInProject(searchPath, (msg: string, count: number) => {
+                  SidebarView.postMessage({ command: 'uploadProgress', data: { message: `${msg} (${count} files)` } })
+                })
+                filesToUpload.push(...foundFiles)
+              }
 
-        if (filesToUpload.length === 0) {
-          SidebarView.postMessage({ command: 'scanComplete', data: { files: [], error: 'No @RestController found' } })
-          return
-        }
+              filesToUpload = [...new Set(filesToUpload)]
+            }
 
-        SidebarView.postMessage({ command: 'scanComplete', data: { files: filesToUpload } })
+            if (filesToUpload.length === 0) {
+              throw new Error('No @RestController found')
+            }
+            return filesToUpload
+          },
+          post: SidebarView.postMessage,
+          label: 'syncFolder',
+        })
       })
     )
   }

@@ -14,15 +14,28 @@ export interface ParsedApi {
   description?: string;
   parameters: ParsedParameter[];
   position?: { line: number; column: number };
+  returnType?: string;
+  responseStatus?: number;
+  responseHeaders?: { name: string; description?: string }[];
+  extraResponses?: { code: string; description?: string }[];
+  secured?: boolean;
+  permitAll?: boolean;
+  securityScheme?: { name: string; type: string };
+  securityRequirement?: string;
+  methodName?: string;
+  className?: string;
 }
 
 export interface ParsedParameter {
   name: string;
-  in: 'path' | 'query' | 'body' | 'header';
+  in: 'path' | 'query' | 'body' | 'header' | 'cookie';
+  /** True when the param is a multipart part (@RequestPart), not a JSON body. */
+  part?: boolean;
   required?: boolean;
   type?: string;
   description?: string;
   validation?: ValidationConstraint[];
+  defaultValue?: string;
 }
 
 export interface ParsedClass {
@@ -31,6 +44,9 @@ export interface ParsedClass {
   isController: boolean;
   basePath: string;
   apis: ParsedApi[];
+  secured?: boolean;
+  securityScheme?: { name: string; type: string };
+  securityRequirement?: string;
 }
 
 export interface ParseResult {
@@ -74,6 +90,22 @@ function extractDescription(annotationContent: string): string | null {
   if (!annotationContent) return null;
   return extractOperationValue(annotationContent, 'value') ||
          extractOperationValue(annotationContent, 'description');
+}
+
+interface AnnotationHit {
+  index: number;
+  content: string;
+}
+
+/** Collect every match of an annotation regex in ONE pass over the source. */
+function collectAnnotationMatches(code: string, pattern: RegExp): AnnotationHit[] {
+  const regex = new RegExp(pattern.source, pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`);
+  const hits: AnnotationHit[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(code)) !== null) {
+    hits.push({ index: match.index, content: match[1] || '' });
+  }
+  return hits;
 }
 
 function extractNumericValue(content: string, key: string): number | null {
@@ -187,15 +219,20 @@ export class JavaParser {
     const classMatch = code.match(/class\s+(\w+)/);
     const className = classMatch ? classMatch[1] : 'Unknown';
 
+    // Anchor the class-body boundary to the SAME class declaration used for
+    // className — a bare indexOf('class') can land inside a string, a comment,
+    // or an earlier helper class, misclassifying method-level annotations.
+    const classDeclIndex = classMatch?.index ?? -1;
+    const classDeclEnd = classDeclIndex >= 0 ? code.indexOf('{', classDeclIndex) : -1;
+    const classBodyStart = classDeclEnd > 0 ? classDeclEnd + 1 : 0;
+
+    // basePath comes ONLY from a class-level @RequestMapping (before the class
+    // body brace); a method-level @RequestMapping must never become the basePath.
     const requestMappingRegex = /@RequestMapping(?:\s*\(([^)]*)\))?/;
     const requestMappingExec = requestMappingRegex.exec(code);
-    const basePath = requestMappingExec && requestMappingExec[1]
+    const basePath = requestMappingExec && requestMappingExec[1] && requestMappingExec.index < classBodyStart
       ? extractPathFromAnnotation(requestMappingExec[1]) || ''
       : '';
-
-    // Find class body opening brace to distinguish class-level vs method-level annotations
-    const classDeclEnd = code.indexOf('{', code.indexOf('class'));
-    const classBodyStart = classDeclEnd > 0 ? classDeclEnd + 1 : 0;
 
     const methods = [
       { regex: ANNOTATION_PATTERNS.getMapping, method: 'GET' as const },
@@ -204,6 +241,12 @@ export class JavaParser {
       { regex: ANNOTATION_PATTERNS.deleteMapping, method: 'DELETE' as const },
       { regex: ANNOTATION_PATTERNS.patchMapping, method: 'PATCH' as const },
     ];
+
+    // One pass per annotation kind up front; the per-method loops below walk
+    // these arrays instead of rescanning the whole file for every match.
+    const operationMatches = collectAnnotationMatches(code, /@Operation(?:\s*\(([^)]*)\))?/);
+    const apiOperationMatches = collectAnnotationMatches(code, /@ApiOperation(?:\s*\(([^)]*)\))?/);
+    const descriptionMatches = collectAnnotationMatches(code, /@Description(?:\s*\(([^)]*)\))?/);
 
     const parsedClass: ParsedClass = {
       name: className,
@@ -250,15 +293,10 @@ export class JavaParser {
           methodEnd = nextAnnotation > 0 ? nextAnnotation : code.length;
         }
         
-        const methodBodyArea = code.substring(Math.max(0, match.index - 200), methodEnd > 0 ? methodEnd : code.length);
-
         // Priority chain: @Operation(summary) > @ApiOperation(value|summary) > path
-        const operationRegex = /@Operation(?:\s*\(([^)]*)\))?/g;
-        let opMatch;
-        while ((opMatch = operationRegex.exec(code)) !== null) {
-          if (opMatch.index < match.index && match.index - opMatch.index < 200) {
-            const opContent = opMatch[1] || '';
-            const summary = extractOperationValue(opContent, 'summary');
+        for (const op of operationMatches) {
+          if (op.index < match.index && match.index - op.index < 200) {
+            const summary = extractOperationValue(op.content, 'summary');
             if (summary) {
               api.summary = summary;
               break;
@@ -267,12 +305,9 @@ export class JavaParser {
         }
 
         if (!api.summary) {
-          const apiOpRegex = /@ApiOperation(?:\s*\(([^)]*)\))?/g;
-          let apiOpMatch;
-          while ((apiOpMatch = apiOpRegex.exec(code)) !== null) {
-            if (apiOpMatch.index < match.index && match.index - apiOpMatch.index < 200) {
-              const apiOpContent = apiOpMatch[1] || '';
-              const summary = extractSummaryFromApiOperation(apiOpContent);
+          for (const apiOp of apiOperationMatches) {
+            if (apiOp.index < match.index && match.index - apiOp.index < 200) {
+              const summary = extractSummaryFromApiOperation(apiOp.content);
               if (summary) {
                 api.summary = summary;
                 break;
@@ -283,14 +318,11 @@ export class JavaParser {
 
         // @Description fallback (swagger-core)
         if (!api.summary) {
-          const descRegex = /@Description(?:\s*\(([^)]*)\))?/g;
-          let descMatch;
-          while ((descMatch = descRegex.exec(code)) !== null) {
-            if (descMatch.index < match.index && match.index - descMatch.index < 200) {
-              const descContent = descMatch[1] || '';
-              const desc = extractDescription(descContent);
-              if (desc) {
-                api.summary = desc;
+          for (const desc of descriptionMatches) {
+            if (desc.index < match.index && match.index - desc.index < 200) {
+              const description = extractDescription(desc.content);
+              if (description) {
+                api.summary = description;
                 break;
               }
             }
@@ -410,9 +442,16 @@ export class JavaParser {
           return positional ? positional[1] : null;
         }
 
-        // @RequestBody
+        // @RequestBody lives in the parameter list — between the mapping
+        // annotation and the method body's opening brace. Scanning past the
+        // body brace would bind @RequestBody mentions from comments, strings,
+        // or later methods to this API.
+        let paramListEnd = methodEnd > 0 ? methodEnd : code.length;
+        if (openBrace > 0) {
+          paramListEnd = openBrace;
+        }
         const requestBodyRegex = /@RequestBody/;
-        if (requestBodyRegex.test(code.substring(methodStart, methodEnd > 0 ? methodEnd : code.length))) {
+        if (requestBodyRegex.test(code.substring(methodStart, paramListEnd))) {
           api.parameters.push({
             name: 'body',
             in: 'body',
@@ -539,24 +578,17 @@ export class JavaParser {
         methodEnd = nextAnnotation > 0 ? nextAnnotation : code.length;
       }
 
-      const methodBodyArea = code.substring(Math.max(0, rmMatch.index - 200), methodEnd > 0 ? methodEnd : code.length);
-
-      const operationRegex = /@Operation(?:\s*\(([^)]*)\))?/g;
-      let opMatch;
-      while ((opMatch = operationRegex.exec(code)) !== null) {
-        if (opMatch.index < rmMatch.index && rmMatch.index - opMatch.index < 200) {
-          const opContent = opMatch[1] || '';
-          const summary = extractOperationValue(opContent, 'summary');
+      for (const op of operationMatches) {
+        if (op.index < rmMatch.index && rmMatch.index - op.index < 200) {
+          const summary = extractOperationValue(op.content, 'summary');
           if (summary) { api.summary = summary; break; }
         }
       }
 
       if (!api.summary) {
-        const apiOpRegex = /@ApiOperation(?:\s*\(([^)]*)\))?/g;
-        let apiOpMatch;
-        while ((apiOpMatch = apiOpRegex.exec(code)) !== null) {
-          if (apiOpMatch.index < rmMatch.index && rmMatch.index - apiOpMatch.index < 200) {
-            const summary = extractSummaryFromApiOperation(apiOpMatch[1] || '');
+        for (const apiOp of apiOperationMatches) {
+          if (apiOp.index < rmMatch.index && rmMatch.index - apiOp.index < 200) {
+            const summary = extractSummaryFromApiOperation(apiOp.content);
             if (summary) { api.summary = summary; break; }
           }
         }
@@ -567,6 +599,19 @@ export class JavaParser {
       parsedClass.apis.push(api);
       result.apis.push(api);
     }
+
+    // Dedupe composed + plain mappings: the same (method, fullPath) pair can
+    // be produced by both the shorthand loop and the method-level
+    // @RequestMapping loop; keep the first occurrence.
+    const seenMappings = new Set<string>();
+    const dedupedApis = parsedClass.apis.filter(api => {
+      const key = `${api.method} ${api.fullPath}`;
+      if (seenMappings.has(key)) return false;
+      seenMappings.add(key);
+      return true;
+    });
+    parsedClass.apis = dedupedApis;
+    result.apis = dedupedApis;
 
     result.classes.push(parsedClass);
     return result;
@@ -592,7 +637,10 @@ export class JavaParser {
       if (hovers && hovers[0]?.contents) {
         const contents = hovers[0].contents;
         const md = Array.isArray(contents) ? contents[0] : contents;
-        const lines = md.value.split('\n');
+        // Guard the MarkdownString | MarkedString union: MarkedString can be a
+        // plain string or {language, value}; only MarkdownString has .value.
+        const value = typeof md === 'string' ? md : md?.value;
+        const lines = (value ?? '').split('\n');
         return lines[0] || null;
       }
     } catch {
@@ -615,7 +663,11 @@ export class JavaParser {
       // Only override auto-generated summaries with javadoc
       const autoGenerated = `${api.method} ${api.path || '/'}`;
       if (api.summary === autoGenerated) {
-        const javadoc = await JavaParser.extractJavadoc(docUri, new Position(api.position.line, api.position.column));
+        // ParsedApi.position.line is stored 1-based (T6); VSCode's Position.line is
+        // 0-based — forward line - 1 (never below 0), otherwise the hover lands one
+        // line too low.
+        const pos = new Position(Math.max(0, api.position.line - 1), api.position.column);
+        const javadoc = await JavaParser.extractJavadoc(docUri, pos);
         if (javadoc) {
           api.summary = javadoc;
         }

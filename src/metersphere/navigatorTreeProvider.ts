@@ -74,7 +74,13 @@ export class NavigatorTreeDataProvider implements vscode.TreeDataProvider<Naviga
           NavigatorEngine.discoverChildModules(projectId, element.id, this.fetchFn),
           NavigatorEngine.discoverApis(projectId, this.fetchFn, element.id),
         ])
-        const resolvedChildModules = element.getChildren().length > 0 ? element.getChildren() : fetchedChildModules
+        // Fresh fetch wins for the SET of children (server-side additions and
+        // removals become visible on re-expand), but stored node objects are
+        // reused for ids that still exist so VSCode keeps expansion state.
+        const storedById = new Map(element.getChildren().map(child => [child.id, child]))
+        const resolvedChildModules = fetchedChildModules.length > 0
+          ? fetchedChildModules.map(fetched => storedById.get(fetched.id) ?? fetched)
+          : element.getChildren()
         DebugLogger.log('TreeProvider', 'Module expanded', {
           moduleId: element.id,
           moduleName: element.name,

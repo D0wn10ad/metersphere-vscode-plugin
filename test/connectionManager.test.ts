@@ -203,5 +203,70 @@ describe('ConnectionManager', () => {
         signature: 'mock-signature',
       })
     })
+
+    interface Deferred {
+      promise: Promise<any>
+      resolve: (value: any) => void
+    }
+    const deferred = (): Deferred => {
+      let resolve!: (value: any) => void
+      const promise = new Promise<any>((r) => {
+        resolve = r
+      })
+      return { promise, resolve }
+    }
+    const stubConfigured = () => {
+      const { SettingsManager } = require('../src/metersphere/settingsManager')
+      ;(SettingsManager.getMsUrl as jest.Mock).mockReturnValue('http://ms.example.com')
+      ;(SettingsManager.getAccessKey as jest.Mock).mockReturnValue('ak')
+      ;(SettingsManager.getSecretKey as jest.Mock).mockReturnValue('sk')
+      return SettingsManager
+    }
+
+    it('ignores a stale failing completion when an older test finishes after a newer one', async () => {
+      const { httpRequest } = require('../src/metersphere/httpClient')
+      const SettingsManager = stubConfigured()
+
+      const slow = deferred()
+      const fast = deferred()
+      ;(httpRequest as jest.Mock).mockReturnValueOnce(slow.promise).mockReturnValueOnce(fast.promise)
+
+      const first = cm.testConnection()
+      const second = cm.testConnection()
+
+      fast.resolve({ status: 200, body: { data: { id: 'user-new' } } })
+      const secondResult = await second
+      expect(secondResult.success).toBe(true)
+      expect(cm.getState()).toBe(ConnectionState.Connected)
+      expect(SettingsManager.setCurrentUserId).toHaveBeenCalledWith('user-new')
+
+      slow.resolve({ status: 401, body: {} })
+      const firstResult = await first
+      expect(firstResult.success).toBe(false)
+      expect(cm.getState()).toBe(ConnectionState.Connected)
+      expect(SettingsManager.setCurrentUserId).toHaveBeenCalledTimes(1)
+    })
+
+    it('ignores a stale successful completion that would overwrite the newer user id', async () => {
+      const { httpRequest } = require('../src/metersphere/httpClient')
+      const SettingsManager = stubConfigured()
+
+      const slow = deferred()
+      const fast = deferred()
+      ;(httpRequest as jest.Mock).mockReturnValueOnce(slow.promise).mockReturnValueOnce(fast.promise)
+
+      const first = cm.testConnection()
+      const second = cm.testConnection()
+
+      fast.resolve({ status: 200, body: { data: { id: 'user-new' } } })
+      await second
+
+      slow.resolve({ status: 200, body: { data: { id: 'user-stale' } } })
+      await first
+
+      expect(SettingsManager.setCurrentUserId).toHaveBeenCalledTimes(1)
+      expect(SettingsManager.setCurrentUserId).toHaveBeenCalledWith('user-new')
+      expect(cm.getState()).toBe(ConnectionState.Connected)
+    })
   })
 })

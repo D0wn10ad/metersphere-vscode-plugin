@@ -150,4 +150,95 @@ describe('NavigatorTreeDataProvider', () => {
     expect(children.map(child => child.id)).toEqual(['mod-1-1', 'api-1'])
     expect(children[0].getChildren().map(child => child.id)).toEqual(['mod-1-1-1'])
   })
+
+  test('module expansion shows newly fetched children alongside stored ones', async () => {
+    provider.setFetchFn(async (method, url, _headers, body) => {
+      if (url.includes('/module/list/')) {
+        return {
+          status: 200,
+          headers: {},
+          durationMs: 0,
+          body: {
+            data: [
+              { id: 'mod-1-1', name: 'Child Module', parentId: 'mod-1', projectId: 'proj-1' },
+              { id: 'mod-1-2', name: 'New Module', parentId: 'mod-1', projectId: 'proj-1' },
+            ],
+          },
+        }
+      }
+
+      if (method === 'POST' && url.includes('/definition/list/all') && (body as any)?.moduleIds?.[0] === 'mod-1') {
+        return {
+          status: 200,
+          headers: {},
+          durationMs: 0,
+          body: {
+            data: [
+              { id: 'api-1', name: 'Get Users', path: '/api/users', method: 'GET', moduleId: 'mod-1', projectId: 'proj-1' },
+            ],
+          },
+        }
+      }
+
+      return { status: 200, headers: {}, durationMs: 0, body: { data: [] } }
+    })
+
+    const moduleNode = new NavigatorNode({
+      id: 'mod-1',
+      name: 'Root Module',
+      type: NodeType.MODULE,
+      projectId: 'proj-1',
+    })
+    const storedChild = new NavigatorNode({
+      id: 'mod-1-1',
+      name: 'Child Module',
+      type: NodeType.MODULE,
+      parentId: 'mod-1',
+      projectId: 'proj-1',
+    })
+    moduleNode.addChild(storedChild)
+
+    const children = await provider.getChildren(moduleNode)
+    const ids = children.map(child => child.id)
+    expect(ids).toContain('mod-1-1')
+    expect(ids).toContain('mod-1-2')
+    expect(ids).toContain('api-1')
+    // Stored node object is reused for the unchanged id (identity stability).
+    expect(children.find(child => child.id === 'mod-1-1')).toBe(storedChild)
+  })
+
+  test('module expansion drops stored children removed on the server', async () => {
+    provider.setFetchFn(async (method, url, _headers, body) => {
+      if (url.includes('/module/list/')) {
+        return {
+          status: 200,
+          headers: {},
+          durationMs: 0,
+          body: {
+            data: [
+              { id: 'mod-1-2', name: 'Remaining Module', parentId: 'mod-1', projectId: 'proj-1' },
+            ],
+          },
+        }
+      }
+      return { status: 200, headers: {}, durationMs: 0, body: { data: [] } }
+    })
+
+    const moduleNode = new NavigatorNode({
+      id: 'mod-1',
+      name: 'Root Module',
+      type: NodeType.MODULE,
+      projectId: 'proj-1',
+    })
+    moduleNode.addChild(new NavigatorNode({
+      id: 'mod-1-1',
+      name: 'Deleted Module',
+      type: NodeType.MODULE,
+      parentId: 'mod-1',
+      projectId: 'proj-1',
+    }))
+
+    const children = await provider.getChildren(moduleNode)
+    expect(children.map(child => child.id)).toEqual(['mod-1-2'])
+  })
 })

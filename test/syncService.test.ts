@@ -108,6 +108,40 @@ describe('SyncService', () => {
     expect(postman.item[0].name).toBe('GET /users');
   });
 
+  it('normalizes url.raw: missing leading slash becomes /', () => {
+    const parseResult: ParseResult = {
+      classes: [],
+      apis: [{ method: 'GET', path: 'users', fullPath: 'api/users', parameters: [] }],
+    };
+
+    const postman = SyncService.toPostmanCollection(parseResult, 'Test API');
+    expect(postman.item[0].request.url.raw).toBe('/api/users');
+    expect(postman.item[0].request.url.path).toEqual(['api', 'users']);
+  });
+
+  it('normalizes url.raw: duplicate slashes collapse', () => {
+    const parseResult: ParseResult = {
+      classes: [],
+      apis: [{ method: 'GET', path: '/users/', fullPath: '/api//users/', parameters: [] }],
+    };
+
+    const postman = SyncService.toPostmanCollection(parseResult, 'Test API');
+    expect(postman.item[0].request.url.raw).toBe('/api/users');
+    expect(postman.item[0].request.url.path).toEqual(['api', 'users']);
+  });
+
+  it('keeps url.raw a pure path (no host prefix) for the MeterSphere import contract', () => {
+    const parseResult: ParseResult = {
+      classes: [],
+      apis: [{ method: 'GET', path: '/users/{id}', fullPath: '/api/users/{id}', parameters: [{ name: 'id', in: 'path', required: true }] }],
+    };
+
+    const postman = SyncService.toPostmanCollection(parseResult, 'Test API');
+    expect(postman.item[0].request.url.raw).toBe('/api/users/{id}');
+    expect(postman.item[0].request.url.host).toEqual(['{{baseUrl}}']);
+    expect(postman.item[0].request.url.path).toEqual(['api', 'users', ':id']);
+  });
+
   it('toOpenApiCollection produces valid OpenAPI 3.0 JSON string', () => {
     const parseResult: ParseResult = {
       classes: [],
@@ -133,5 +167,24 @@ describe('SyncService', () => {
     expect(postman.item[0].request.body).toBeDefined();
     expect(postman.item[0].request.body!.mode).toBe('raw');
     expect(postman.item[1].request.body).toBeDefined();
+  });
+
+  describe('resolveCollectionName', () => {
+    it('honors a non-empty exportName (trimmed)', () => {
+      expect(SyncService.resolveCollectionName('  My Export  ', ['/a/UserController.java'])).toBe('My Export');
+    });
+
+    it('falls back to the single file stem when exportName is empty', () => {
+      expect(SyncService.resolveCollectionName('', ['/a/UserController.java'])).toBe('UserController');
+      expect(SyncService.resolveCollectionName('   ', ['/a/Order.java'])).toBe('Order');
+    });
+
+    it('falls back to the generic plural name for multiple files', () => {
+      expect(SyncService.resolveCollectionName(undefined, ['/a/A.java', '/b/B.java'])).toBe('Java APIs');
+    });
+
+    it('falls back to Java API when the single file has no stem', () => {
+      expect(SyncService.resolveCollectionName(null, [''])).toBe('Java API');
+    });
   });
 });

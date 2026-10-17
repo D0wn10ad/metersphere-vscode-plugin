@@ -36,8 +36,7 @@ export async function httpRequest(
   method: string,
   url: string,
   headers: Record<string, string> = {},
-  body?: any,
-  _tokenOverride?: string
+  body?: any
 ): Promise<HttpResponse> {
   const start = Date.now()
   const fetchFn = getFetch()
@@ -45,12 +44,15 @@ export async function httpRequest(
     throw new Error('Fetch API is not available in this environment')
   }
 
+  const controller = new AbortController()
+
   const doFetch = async () => {
     const res = await fetchFn(url, {
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
       agent: getAgent(),
+      signal: controller.signal,
     })
     const durationMs = Date.now() - start
     let contentType = ''
@@ -73,9 +75,24 @@ export async function httpRequest(
     }
   }
 
-  const timeoutPromise = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error(`Request timed out after ${REQUEST_TIMEOUT_MS / 1000}s`)), REQUEST_TIMEOUT_MS)
-  )
+  let timedOut = false
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      timedOut = true
+      controller.abort()
+      reject(new Error(`Request timed out after ${REQUEST_TIMEOUT_MS / 1000}s`))
+    }, REQUEST_TIMEOUT_MS)
+  })
 
-  return Promise.race([doFetch(), timeoutPromise])
+  try {
+    return await Promise.race([doFetch(), timeoutPromise])
+  } catch (error) {
+    if (timedOut) {
+      throw new Error(`Request timed out after ${REQUEST_TIMEOUT_MS / 1000}s`)
+    }
+    throw error
+  } finally {
+    clearTimeout(timer)
+  }
 }

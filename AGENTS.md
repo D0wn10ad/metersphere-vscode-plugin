@@ -32,7 +32,7 @@ npx tsc -p tsconfig.json --noEmit   # Type-check only (no emit)
 npx @vscode/vsce package          # Build .vsix in repo root
 ```
 
-Pre-existing warnings: no LICENSE file (add one to suppress) and 909+ unbundled files (esbuild would reduce that — see Section 4).
+Pre-existing warnings: no LICENSE file (add one to suppress). The VSIX ships ~272 files / ~400 KB after the `.vscodeignore` tightening (see Section 4).
 
 ### Lint
 
@@ -59,8 +59,7 @@ node test/httpClient.test.js        # Legacy node-only tests
 
 Tests run without the VSCode runtime using a mock stack:
 - `src/vscode.d.ts` — TypeScript type declarations for the VSCode API
-- `node_modules/vscode/index.js` — CommonJS mock with in-memory settings storage
-- `test/vscode-mock-setup.js` — Jest setup that mocks the `vscode` module globally
+- `test/vscode-mock-setup.js` — Jest setup that mocks the `vscode` module globally (per-test configurable via `globalThis.__vscodeMock`)
 
 Do not modify these mock files without a corresponding update to tests.
 
@@ -133,10 +132,26 @@ src/
     syncEngine.ts            # Controller scanning and sync logic
     syncService.ts           # Sync upload service
     javaFileScanner.ts       # Java file discovery
-    javaParser.ts            # Java annotation parser
-    javaParserAst.ts         # AST-based Java parser
+    javaParser.ts            # Java annotation parser (regex engine)
+    javaParserDispatch.ts    # CST-first dispatch with deterministic regex fallback
+    scanLifecycle.ts         # Scan guard: exactly one terminal scanComplete per scan
+    uploadParsing.ts         # Upload parse orchestration + OpenAPI DTO pre-pass
+    typeResolver.ts          # Return-type extraction + type registry
+    openApiBuilder.ts        # OpenAPI 3.0 document assembly
+    validationSchema.ts      # Bean-validation constraints -> JSON Schema keywords
+    uploadPlatform.ts        # Server platform mapping (OpenAPI ships as "Swagger2")
+    variableResolver.ts      # {{var}} environment variable resolution
+    escapeHtml.ts            # Webview HTML/JS escaping helpers
     contextHolder.ts         # Global extension context holder
     debugLogger.ts           # Debug logging to Output panel
+    javaAst/                 # CST parser stack (java-parser / Chevrotain based)
+      cstJavaParser.ts       # CST controller/method parser (primary engine)
+      annotationReader.ts    # Annotation values: nested annotations, string escapes
+      cstParamParser.ts      # Parameter extraction (varargs-aware, Spring required semantics)
+      projectSymbolIndex.ts  # LSP/disk type resolution for cross-file DTOs
+      javadocIndex.ts        # Javadoc comment index (@param, summaries)
+      cstWalk.ts             # CST tree walking helpers
+      loadJavaParser.ts      # Vendored java-parser loader
     models/
       navigatorNode.ts       # Tree node types (workspace/project/module/api)
       apiTemplate.ts         # API definition template
@@ -145,7 +160,7 @@ src/
 test/
   tokenManager.test.ts       # TokenManager Jest tests
   httpClient.test.ts         # HttpClient Jest tests
-  vscode-mock-setup.js       # Global vscode mock for Jest
+  vscode-mock-setup.js       # Global vscode mock for Jest (jest.mock factory)
   commandRouter.test.ts      # CommandRouter tests
   connectionManager.test.ts  # ConnectionManager tests
   navigatorEngine.test.ts    # NavigatorEngine tests
@@ -153,7 +168,6 @@ test/
   syncEngine.test.ts         # SyncEngine tests
   syncService.test.ts        # SyncService tests
   models/                    # Model tests
-node_modules/vscode/index.js # VSCode API CommonJS mock
 docs/superpowers/
   specs/                     # Design specifications per phase
   plans/                     # Implementation plans per phase
@@ -161,7 +175,7 @@ docs/superpowers/
 
 When adding features, decompose into small, self-contained tasks. Each task should produce a self-contained, testable change.
 
-**esbuild bundling** is a deferred enhancement. Currently 909+ files ship unbundled (~1.3 MB). If bandwidth/load time become concerns, wire up `esbuild` (or `@vscode/vsce`'s built-in esbuild integration) to produce a single JS bundle. The current packaging command `npx @vscode/vsce package` will produce the 909-file VSIX until then.
+**esbuild bundling** remains a deferred enhancement, but the urgent size problem is solved: the tightened `.vscodeignore` (node_modules java-parser tree, all `.ts` sources, source maps, dev scaffolding) cut the VSIX from 2284 files / 1.97 MB to ~272 files / ~400 KB while keeping `out/**`, the vendored `vendor/java-parser.cjs`, and the `form-data` runtime chain. If load time ever matters again, wire up `esbuild` (or `@vscode/vsce`'s built-in esbuild integration) to produce a single JS bundle.
 
 ---
 
@@ -179,7 +193,7 @@ When adding features, decompose into small, self-contained tasks. Each task shou
 - Ensure `npm install` runs successfully before building.
 - Use TypeScript compile checks (`npx tsc -p tsconfig.json --noEmit`) to verify types during development.
 - Run `npm test` to confirm all Jest tests pass before committing.
-- If TypeScript errors appear related to `vscode` module, verify `src/vscode.d.ts` and `node_modules/vscode/index.js` exist.
+- If TypeScript errors appear related to `vscode` module, verify `src/vscode.d.ts` and `test/vscode-mock-setup.js` exist.
 
 ---
 
@@ -208,8 +222,9 @@ After design and planning, choose one:
 | API Endpoints in Navigator | ✅ Complete | API definitions shown under modules in tree |
 | Debugger Polish & Sidebar Integration | ✅ Complete | VSCode theme CSS variables in debugger; inline History removed (sidebar-only); onclick→addEventListener cleanup; message queuing; upload duplication guard |
 | Header/Naming Fixes | ✅ Complete | @RequestHeader propagation, API naming precedence (Operation > Javadoc > path), AST parser parity |
-| OpenAPI Schema Resolution | 🚧 Planned | Tiers 1–2 (java-ast type extraction + $ref) in v1; Tiers 3–4 (Java LSP field expansion) deferred |
+| OpenAPI Schema Resolution | ✅ Complete | Tiers 1–2 (java-ast type extraction + $ref) plus Tiers 3–4 (async DTO pre-pass via LSP symbol provider / bounded disk scan, graceful degradation without redhat.java) |
 | Gap Analysis (IDEA vs VSCode) | ✅ Complete | `docs/superpowers/gap-analysis-vscode-vs-idea.md` documents all P0–P2 gaps |
+| OCR Security & Robustness Hardening | ✅ Complete | 52 review findings fixed across 14 themes (XSS escaping, timeouts, parser correctness, lifecycle guards, packaging); live-verified against v2.10.26-lts; 35 suites / 535 tests |
 
 NOTE on phases:
 - Phase 3A was initially Stub because getEnvironmentHtml() and getHistoryHtml() were stubs (populated with real data during Sidebar Migration; now fully Complete)
@@ -267,8 +282,7 @@ This extension supports multiple ways to sync Java Spring Controllers to MeterSp
 
 The extension supports OpenAPI 3.0 JSON export (`platform=Swagger2`) alongside legacy Postman format, controlled by `metersphere.exportFormat` setting.
 
-See spec: `docs/superpowers/specs/2026-05-23-openapi-schema-resolution.md`
-See plan: `docs/superpowers/plans/2026-05-23-openapi-schema-resolution-plan.md`
+See spec: `docs/superpowers/specs/2026-10-15-openapi-spec-coverage.md`
 
 ### Type Resolution Tiers
 
@@ -276,18 +290,46 @@ See plan: `docs/superpowers/plans/2026-05-23-openapi-schema-resolution-plan.md`
 |------|------|------|------------------|---------|
 | 1 | Return type string | `java-ast` AST (method node) | Raw type text: `Response<IDDShoppingModel>` | No |
 | 2 | Type name / $ref | `typeResolver.ts` | Strips generics → `IDDShoppingModel` | No |
-| 3 | Field-level schemas | Red Hat Java LSP hover (deferred) | Type → field list → `components/schemas` | Yes |
-| 4 | Deep nested expansion | Recursive LSP calls (deferred) | Full nested schema tree | Yes |
+| 3 | Field-level schemas | `projectSymbolIndex.ts` async pre-pass (LSP symbol provider → bounded disk scan) | Type → field list → `components/schemas` | Optional (degrades gracefully) |
+| 4 | Deep nested expansion | Recursive resolution through the same index (bounded, capped at 64 type names per upload) | Nested `$ref`s for cross-file DTOs, enums, records | Optional (degrades gracefully) |
 
-Tiers 1–2 are implemented in v1. Tiers 3–4 require `redhat.java` extension and are deferred.
+Tiers 1–2 run synchronously at build time. Tiers 3–4 run in the upload path via the async DTO
+pre-pass (`parseUploadedFiles(..., isOpenApi=true)` → `resolveDependencyTypes`), gated to the
+OpenAPI export only (never for Postman); results land in the symbol-index cache which is cleared
+at each pre-pass start so a prior upload cannot leak stale entries. Without the Red Hat Java
+extension the pre-pass falls back to a bounded on-disk scan, and unresolvable types export as
+generic objects — upload never blocks or throws.
+
+### Emitted export surface (OpenAPI path)
+
+- Responses: real status code (`@ResponseStatus` else 200) + body schema; wrapper types
+  (`Response`/`Result`/`R`/`HttpEntity`/`ResponseEntity`/`Optional`/`Page`/`IPage`) unwrap fully to
+  the payload (`Response<Page<T>>` → `T`); `@ResponseHeader` → response `headers`; `@ApiResponse` →
+  extra response codes.
+- Parameters: `description` (`@ApiParam`/`@Parameter` > javadoc `@param`), `default` (coerced to the
+  schema type for numerics), `required`, and validation keywords (`@NotNull`/`@Size`/`@Min`/`@Max`/
+  `@Pattern`/`@Email` — positional and named annotation forms both captured).
+- DTO fields: field-level validation + `@Schema` description, class-level `required`.
+- Types: `enum` → `{type:'string', enum:[...]}`; `record` → object from components; `interface` →
+  best-effort from methods; `Map<K,V>` → `{type:'object', additionalProperties:<V>}`.
+- Auth: `@PreAuthorize`/`@Secured`/`@RolesAllowed` → `components.securitySchemes.bearerAuth`
+  (bearer JWT) + document `security`; `@PermitAll` → per-op `security: []`; springdoc
+  `@SecurityScheme`/`@SecurityRequirement` override.
+- Misc: `operationId` (collision-suffixed) + `tags`; `@RequestPart`/`MultipartFile` →
+  `multipart/form-data` (parts win over `@RequestBody`); `@CookieValue` → `in: cookie`.
+- `format` hints are limited to `date-time` (`LocalDateTime`/`Date`) and `uuid` (`UUID`) — integer/
+  number schemas stay bare (pinned export tests depend on it).
 
 ### New Modules
 
 | Module | File | Purpose |
 |--------|------|---------|
 | TypeResolver | `typeResolver.ts` | Extract type name from return type string, build type registry |
-| SchemaGenerator | `schemaGenerator.ts` | Convert Java type → OpenAPI Schema Object |
 | OpenApiBuilder | `openApiBuilder.ts` | Assemble full OpenAPI 3.0 document |
+| ValidationSchema | `validationSchema.ts` | Map bean-validation constraints → JSON Schema keywords |
+
+Note: `schemaGenerator.ts` was removed (dead module — schema generation lives in
+`typeResolver.ts` + `openApiBuilder.ts`).
 
 ---
 
@@ -342,3 +384,27 @@ The gap analysis compares the VSCode plugin against:
 - IDEA plugin v3.x `MsBaseTransferV2` (V2 server compatibility mode, OpenAPI-based)
 
 When implementing a gap fix, first consult the IDEA source analysis in the gap doc for exact parameter names, endpoint paths, and serialization format.
+
+---
+
+## 15) MeterSphere v2.x Server API Findings (verified live)
+
+These findings come from live debugging against a running `v2.10.26-lts` instance (Docker: `gateway` on :8081 → microservices), plus the same gateway pattern observed in another v2 project. Re-verify against the server source for YOUR target version before changing anything that depends on them. Server source for the exact image version: branch/tag `v2.10.26-lts`, module `api-test/backend/src/main/java/io/metersphere/...` (note: a local checkout whose branch is *named* `v2.10.26-lts` may actually contain v3-lineage code — verify the package layout, e.g. `io.metersphere.service.definition` vs `io.metersphere.api.service.definition`, before trusting its line numbers).
+
+### 15.1 Upload platform: OpenAPI content MUST be labelled `Swagger2`, never `Swagger3`
+
+- `ApiDefinitionImportParserFactory.getApiImportParser(platform)` (api-test service) registers ONLY: `Metersphere`, `Postman`, `Swagger2`, `Har`, `Jmeter`. **There is no `Swagger3` parser in v2.x.**
+- Sending `platform: "Swagger3"` → the factory returns `null` → `Objects.requireNonNull(runService)` NPEs inside `ApiDefinitionService.apiTestImport` → HTTP 500 with an **empty message** (`{"success":false,"message":"","data":null}`) — the response body carries no hint of the real cause.
+- The server's `Swagger2Parser.parse` auto-detects OpenAPI 3.0 documents (checks the `openapi` key) and delegates to an internal `Swagger3Parser`. So `platform: "Swagger2"` is the correct label for OpenAPI 3.0.3 exports on v2.x servers.
+- Extension mapping: `src/metersphere/uploadPlatform.ts` (`resolveUploadPlatform`), guarded by `test/uploadPlatform.test.ts`, which asserts no platform outside the server's registered set is ever emitted.
+- Debugging recipe: a 500 with `success:false, message:""` on `/api/api/definition/import` means read the api-test container's error log (`docker exec api-test tail -100 /opt/metersphere/logs/api-test/error.log`) — the response body will not tell you anything.
+
+### 15.2 One `/api` gateway, two backends: single- vs double-prefix routing (v2 only)
+
+Behind the v2 gateway, single- and double-`/api` prefixes hit **different backend services**. Verified live on v2.10.26-lts; v3 has no such gateway structure.
+
+- **Never** rewrite API-definition endpoints to the single prefix: `/api/definition/...` → 404. The double prefix `/api/api/definition/...` is the valid form. (In the request helper, passing an empty string as the 4th parameter still falls back to the `api` prefix.)
+- Single prefix `/api/project/list/related` → hits the **project-management** service (`BaseProjectController`) → returns only projects where the current user is a **member** — possibly an empty list.
+- Double prefix `/api/api/project/list/{goPage}/{pageSize}` → hits the **api-test** service (`ExtProjectController`; class-level `@RequestMapping()` with an empty prefix, method-level full literal path) → returns **all** projects in the workspace.
+- Therefore: an empty list from the single prefix does **not** mean "no projects exist". When investigating projects, always query the double-prefix paginated list first; never assert "zero projects" from a single-prefix empty result.
+- Relevance to this extension: the Navigator's project discovery currently uses the single prefix (`/api/project/list/related`), so it can under-report projects for non-member users. Switching project enumeration to the double-prefix paginated list is a candidate fix (see §14 P2 "userId in project list").

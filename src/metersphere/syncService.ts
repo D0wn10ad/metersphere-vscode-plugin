@@ -32,6 +32,22 @@ export interface PostmanCollection {
 }
 
 export class SyncService {
+  /**
+   * Resolve the collection name for an upload: a non-empty `exportName` from
+   * the Sync panel wins; otherwise fall back to the single file's stem or a
+   * generic plural name. The name becomes the Postman `info.name`, which the
+   * server turns into the target module path.
+   */
+  static resolveCollectionName(exportName: unknown, files: string[]): string {
+    const trimmed = typeof exportName === 'string' ? exportName.trim() : '';
+    if (trimmed !== '') {
+      return trimmed;
+    }
+    return files.length === 1
+      ? files[0].split(/[/\\]/).pop()?.replace('.java', '') || 'Java API'
+      : 'Java APIs';
+  }
+
   static toPostmanCollection(parseResult: ParseResult, name: string): PostmanCollection {
     const collection: PostmanCollection = {
       info: {
@@ -59,8 +75,12 @@ export class SyncService {
     const hasPathParams = api.parameters?.some(p => p.in === 'path') ?? false;
 
     const urlRaw = (api.fullPath as string) || (api.path as string) || '';
-    const pathParts = typeof urlRaw === 'string'
-      ? urlRaw.split('/').filter(Boolean).map(part => part.replace(/^{(.+)}$/, ':$1'))
+    // Server contract: MeterSphere's PostmanDefinitionParser uses url.raw VERBATIM
+    // as the imported API path, so raw must stay a pure {param} path — never a
+    // full URL with a host prefix. Normalize to guarantee one leading slash.
+    const normalizedRaw = urlRaw ? '/' + urlRaw.split('/').filter(Boolean).join('/') : '';
+    const pathParts = normalizedRaw
+      ? normalizedRaw.split('/').filter(Boolean).map(part => part.replace(/^{(.+)}$/, ':$1'))
       : []
 
     const variables: Array<{ key: string; value: string }> = [];
@@ -76,7 +96,7 @@ export class SyncService {
         method: api.method || 'GET',
         header: [],
         url: {
-          raw: urlRaw,
+          raw: normalizedRaw,
           host: ['{{baseUrl}}'],
           path: pathParts,
         },

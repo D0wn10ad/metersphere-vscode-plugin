@@ -1,10 +1,5 @@
 import { HttpResponse } from './httpClient'
 
-export enum SyncDirection {
-  PULL = 'pull',
-  PUSH = 'push',
-}
-
 interface SyncItem {
   id: string
   version: number

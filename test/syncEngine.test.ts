@@ -1,4 +1,4 @@
-import { SyncEngine, SyncDirection } from '../src/metersphere/syncEngine'
+import { SyncEngine } from '../src/metersphere/syncEngine'
 
 describe('SyncEngine', () => {
   test('detects conflict when local and remote differ', () => {
