@@ -32,7 +32,7 @@ npx tsc -p tsconfig.json --noEmit   # Type-check only (no emit)
 npx @vscode/vsce package          # Build .vsix in repo root
 ```
 
-Pre-existing warnings: no LICENSE file (add one to suppress) and 909+ unbundled files (esbuild would reduce that — see Section 4).
+Pre-existing warnings: no LICENSE file (add one to suppress). The VSIX ships ~272 files / ~400 KB after the `.vscodeignore` tightening (see Section 4).
 
 ### Lint
 
@@ -132,10 +132,26 @@ src/
     syncEngine.ts            # Controller scanning and sync logic
     syncService.ts           # Sync upload service
     javaFileScanner.ts       # Java file discovery
-    javaParser.ts            # Java annotation parser
-    javaParserAst.ts         # AST-based Java parser
+    javaParser.ts            # Java annotation parser (regex engine)
+    javaParserDispatch.ts    # CST-first dispatch with deterministic regex fallback
+    scanLifecycle.ts         # Scan guard: exactly one terminal scanComplete per scan
+    uploadParsing.ts         # Upload parse orchestration + OpenAPI DTO pre-pass
+    typeResolver.ts          # Return-type extraction + type registry
+    openApiBuilder.ts        # OpenAPI 3.0 document assembly
+    validationSchema.ts      # Bean-validation constraints -> JSON Schema keywords
+    uploadPlatform.ts        # Server platform mapping (OpenAPI ships as "Swagger2")
+    variableResolver.ts      # {{var}} environment variable resolution
+    escapeHtml.ts            # Webview HTML/JS escaping helpers
     contextHolder.ts         # Global extension context holder
     debugLogger.ts           # Debug logging to Output panel
+    javaAst/                 # CST parser stack (java-parser / Chevrotain based)
+      cstJavaParser.ts       # CST controller/method parser (primary engine)
+      annotationReader.ts    # Annotation values: nested annotations, string escapes
+      cstParamParser.ts      # Parameter extraction (varargs-aware, Spring required semantics)
+      projectSymbolIndex.ts  # LSP/disk type resolution for cross-file DTOs
+      javadocIndex.ts        # Javadoc comment index (@param, summaries)
+      cstWalk.ts             # CST tree walking helpers
+      loadJavaParser.ts      # Vendored java-parser loader
     models/
       navigatorNode.ts       # Tree node types (workspace/project/module/api)
       apiTemplate.ts         # API definition template
@@ -144,7 +160,7 @@ src/
 test/
   tokenManager.test.ts       # TokenManager Jest tests
   httpClient.test.ts         # HttpClient Jest tests
-  vscode-mock-setup.js       # Global vscode mock for Jest
+  vscode-mock-setup.js       # Global vscode mock for Jest (jest.mock factory)
   commandRouter.test.ts      # CommandRouter tests
   connectionManager.test.ts  # ConnectionManager tests
   navigatorEngine.test.ts    # NavigatorEngine tests
@@ -152,7 +168,6 @@ test/
   syncEngine.test.ts         # SyncEngine tests
   syncService.test.ts        # SyncService tests
   models/                    # Model tests
-node_modules/vscode/index.js # VSCode API CommonJS mock
 docs/superpowers/
   specs/                     # Design specifications per phase
   plans/                     # Implementation plans per phase
@@ -160,7 +175,7 @@ docs/superpowers/
 
 When adding features, decompose into small, self-contained tasks. Each task should produce a self-contained, testable change.
 
-**esbuild bundling** is a deferred enhancement. Currently 909+ files ship unbundled (~1.3 MB). If bandwidth/load time become concerns, wire up `esbuild` (or `@vscode/vsce`'s built-in esbuild integration) to produce a single JS bundle. The current packaging command `npx @vscode/vsce package` will produce the 909-file VSIX until then.
+**esbuild bundling** remains a deferred enhancement, but the urgent size problem is solved: the tightened `.vscodeignore` (node_modules java-parser tree, all `.ts` sources, source maps, dev scaffolding) cut the VSIX from 2284 files / 1.97 MB to ~272 files / ~400 KB while keeping `out/**`, the vendored `vendor/java-parser.cjs`, and the `form-data` runtime chain. If load time ever matters again, wire up `esbuild` (or `@vscode/vsce`'s built-in esbuild integration) to produce a single JS bundle.
 
 ---
 
@@ -207,8 +222,9 @@ After design and planning, choose one:
 | API Endpoints in Navigator | ✅ Complete | API definitions shown under modules in tree |
 | Debugger Polish & Sidebar Integration | ✅ Complete | VSCode theme CSS variables in debugger; inline History removed (sidebar-only); onclick→addEventListener cleanup; message queuing; upload duplication guard |
 | Header/Naming Fixes | ✅ Complete | @RequestHeader propagation, API naming precedence (Operation > Javadoc > path), AST parser parity |
-| OpenAPI Schema Resolution | 🚧 Planned | Tiers 1–2 (java-ast type extraction + $ref) in v1; Tiers 3–4 (Java LSP field expansion) deferred |
+| OpenAPI Schema Resolution | ✅ Complete | Tiers 1–2 (java-ast type extraction + $ref) plus Tiers 3–4 (async DTO pre-pass via LSP symbol provider / bounded disk scan, graceful degradation without redhat.java) |
 | Gap Analysis (IDEA vs VSCode) | ✅ Complete | `docs/superpowers/gap-analysis-vscode-vs-idea.md` documents all P0–P2 gaps |
+| OCR Security & Robustness Hardening | ✅ Complete | 52 review findings fixed across 14 themes (XSS escaping, timeouts, parser correctness, lifecycle guards, packaging); live-verified against v2.10.26-lts; 35 suites / 535 tests |
 
 NOTE on phases:
 - Phase 3A was initially Stub because getEnvironmentHtml() and getHistoryHtml() were stubs (populated with real data during Sidebar Migration; now fully Complete)
@@ -309,9 +325,11 @@ generic objects — upload never blocks or throws.
 | Module | File | Purpose |
 |--------|------|---------|
 | TypeResolver | `typeResolver.ts` | Extract type name from return type string, build type registry |
-| SchemaGenerator | `schemaGenerator.ts` | Convert Java type → OpenAPI Schema Object |
 | OpenApiBuilder | `openApiBuilder.ts` | Assemble full OpenAPI 3.0 document |
 | ValidationSchema | `validationSchema.ts` | Map bean-validation constraints → JSON Schema keywords |
+
+Note: `schemaGenerator.ts` was removed (dead module — schema generation lives in
+`typeResolver.ts` + `openApiBuilder.ts`).
 
 ---
 

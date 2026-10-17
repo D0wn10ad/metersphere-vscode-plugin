@@ -37,7 +37,7 @@ Sync Java Spring Controllers (`@RestController` / `@Controller`) to MeterSphere:
 | Trigger | Scope |
 |---------|-------|
 | Right-click single `.java` file | That file only |
-| Right-click multiple `.java` files | All selected files |
+| Right-click multiple files/folders | Each `.java` file uploads directly, each folder is scanned recursively; results merged and deduped |
 | Right-click folder | Recursive scan for controllers |
 | Inline button on `.java` file | "This file" vs "Parent folder" dialog |
 | Right-click Navigator project | Recursive scan of project |
@@ -170,6 +170,7 @@ Tests use a mock VSCode stack: `src/vscode.d.ts` and `test/vscode-mock-setup.js`
 | Fix | Details |
 |-----|---------|
 | Full-spec OpenAPI export | Responses now carry real status codes (`@ResponseStatus`) + body schemas (wrapper types like `Response<Page<T>>` unwrap to the payload), parameters emit description/default/validation (javadoc `@param` + bean-validation annotations), DTO fields keep their constraints, enums/records/interfaces and `Map<K,V>` are modeled, `@PreAuthorize`-style auth becomes a bearer-JWT `securityScheme`, operations get `operationId` + `tags`, and DTOs from non-uploaded files are resolved via an async pre-pass (OpenAPI format only). `format` hints limited to `date-time`/`uuid`. See `docs/superpowers/specs/2026-10-15-openapi-spec-coverage.md`. |
+| Security & robustness hardening | 52 code-review findings fixed across 14 themes: webview HTML/JS escaping + credentials no longer embedded in the DOM, request timeouts via `AbortController`, navigator no longer caches failed discovery, stable 16-byte AES key/IV derivation for any credential length, per-file upload error isolation, command status lifecycle (never stranded on "Connecting"), mixed multi-select sync (files + folders classified per URI), regex-parser parity with the CST parser (class-level `basePath`, method-scope detection, `@RequestBody` bound to the parameter list), OpenAPI security schemes always registered, per-upload type-index isolation, varargs parameters parsed, VSIX packaging slimmed (2284 → 272 files). Verified live against MeterSphere v2.10.26-lts: signature auth, exportName → server module, imported API paths. 35 suites / 535 tests. |
 | Multipart + cookie params | `@RequestPart`/`MultipartFile` params export as `multipart/form-data` with per-part schemas; `@CookieValue` exports as `in: cookie`. |
 | API naming precedence | `@Operation(summary)` > first Javadoc line > API path. Removed `@ApiOperation` as a naming source. |
 | Header propagation | `@RequestHeader` names now export into Postman/MeterSphere request headers instead of being dropped. |
@@ -196,12 +197,29 @@ src/
     syncEngine.ts               # Controller scanning and sync logic
     syncService.ts              # Sync upload service
     javaFileScanner.ts          # Java file discovery
-    javaParser.ts               # Java annotation parser
+    javaParser.ts               # Java annotation parser (regex engine)
+    javaParserDispatch.ts       # CST-first dispatch with regex fallback
+    scanLifecycle.ts            # Scan guard: exactly one terminal scanComplete per scan
+    uploadParsing.ts            # Upload parse orchestration + OpenAPI DTO pre-pass
+    typeResolver.ts             # Return-type extraction + type registry
+    openApiBuilder.ts           # OpenAPI 3.0 document assembly
+    validationSchema.ts         # Bean-validation constraints -> JSON Schema keywords
+    uploadPlatform.ts           # Server platform mapping (OpenAPI ships as "Swagger2")
+    variableResolver.ts         # {{var}} environment variable resolution
+    escapeHtml.ts               # Webview HTML/JS escaping helpers
     contextHolder.ts            # Global extension context holder
     debugLogger.ts              # Debug logging to Output panel
     authHeader.js               # Auth header generation
     retry.js                    # Retry utility
     math.js                     # Math utilities
+    javaAst/                    # CST parser stack (java-parser / Chevrotain based)
+      cstJavaParser.ts          # CST controller/method parser (primary engine)
+      annotationReader.ts       # Annotation values: nested annotations, string escapes
+      cstParamParser.ts         # Parameter extraction (varargs-aware, Spring required semantics)
+      projectSymbolIndex.ts     # LSP/disk type resolution for cross-file DTOs
+      javadocIndex.ts           # Javadoc comment index (@param, summaries)
+      cstWalk.ts                # CST tree walking helpers
+      loadJavaParser.ts         # Vendored java-parser loader
     models/
       navigatorNode.ts          # Tree node types (workspace/project/module/api)
       apiTemplate.ts            # API definition template
