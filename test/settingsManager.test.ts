@@ -35,8 +35,8 @@ describe('settingsManager', () => {
     expect(SettingsManager.getExportFormat()).toBe('postman');
   });
 
-  it('returns v3 by default for serverVersion', () => {
-    expect(SettingsManager.getServerVersion()).toBe('v3');
+  it('returns auto by default for serverVersion (probe decides; merged t8 design)', () => {
+    expect(SettingsManager.getServerVersion()).toBe('auto');
   });
 
   it('returns the configured serverVersion (v2)', () => {

@@ -1,6 +1,19 @@
 import * as vscode from 'vscode'
 import * as crypto from 'crypto'
 
+export function toAes128Bytes(credential: string): Buffer {
+  const raw = Buffer.from(credential, 'utf8')
+  if (raw.length === 16) {
+    return raw
+  }
+  if (raw.length > 16) {
+    return raw.subarray(0, 16)
+  }
+  const padded = Buffer.alloc(16)
+  raw.copy(padded, 0)
+  return padded
+}
+
 export class SettingsManager {
   // Global keys (user settings)
   static ACCESS_KEY_KEY = 'metersphere.accessKey'
@@ -74,7 +87,9 @@ export class SettingsManager {
   }
 
   static getExportFormat(): string {
-    return vscode.workspace.getConfiguration().get<string>(SettingsManager.EXPORT_FORMAT_KEY) ?? 'postman'
+    const stored = vscode.workspace.getConfiguration().get<string>(SettingsManager.EXPORT_FORMAT_KEY) ?? 'swagger3'
+    // Legacy mapping: a stored 'swagger2' always produced OpenAPI 3.0.3 anyway.
+    return stored === 'swagger2' ? 'swagger3' : stored
   }
 
   static setExportFormat(format: string): void {
@@ -134,8 +149,8 @@ export class SettingsManager {
     const uuid = crypto.randomUUID()
     const timestamp = Date.now()
     const plaintext = `${ak}|${uuid}|${timestamp}`
-    const key = Buffer.from(sk, 'utf8')
-    const iv = Buffer.from(ak, 'utf8')
+    const key = toAes128Bytes(sk)
+    const iv = toAes128Bytes(ak)
     const cipher = crypto.createCipheriv('aes-128-cbc', key, iv)
     let sig = cipher.update(plaintext, 'utf8', 'base64')
     sig += cipher.final('base64')
