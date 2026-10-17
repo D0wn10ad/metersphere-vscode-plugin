@@ -11,6 +11,11 @@
 import { SidebarView } from '../src/metersphere/views/sidebarView';
 import { DebugLogger } from '../src/metersphere/debugLogger';
 import { httpRequest } from '../src/metersphere/httpClient';
+import { parseUploadedFiles } from '../src/metersphere/uploadParsing';
+
+jest.mock('../src/metersphere/uploadParsing', () => ({
+  parseUploadedFiles: jest.fn(),
+}));
 
 jest.mock('../src/metersphere/httpClient', () => {
   const actual = jest.requireActual('../src/metersphere/httpClient');
@@ -416,4 +421,59 @@ describe('SidebarView.loadProjectModules (auto-discovery, ported from main)', ()
   });
 });
 
+});
+
+
+describe('handleUpload contextPath wiring', () => {
+  const FIXTURE_PARSE = {
+    classes: [
+      { name: 'UserController', isRestController: true, isController: true, basePath: '', apis: [] },
+    ],
+    apis: [{ method: 'GET', path: '/users', fullPath: '/users', parameters: [] }],
+  };
+
+  const respond = (status: number, body: string) =>
+    ({ ok: status < 400, status, text: async () => body }) as any;
+
+  beforeEach(async () => {
+    const cfg = vscode.workspace.getConfiguration();
+    await cfg.update('metersphere.msUrl', 'http://localhost:8081', vscode.ConfigurationTarget.Global);
+    await cfg.update('metersphere.accessKey', 'ak', vscode.ConfigurationTarget.Global);
+    await cfg.update('metersphere.secretKey', 'sk-16-bytes-long!!', vscode.ConfigurationTarget.Global);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('threads uploadData.contextPath into the uploaded OpenAPI document (paths keys prefixed, no double prefix)', async () => {
+    (parseUploadedFiles as jest.Mock).mockResolvedValue({ result: FIXTURE_PARSE, files: ['/ws/UserController.java'] });
+    const fetchMock = jest.fn(async (url: any, _init?: any) => {
+      const u = String(url);
+      if (u.includes('/system/version/current')) return respond(404, '');
+      if (u.includes('/definition/import')) return respond(200, '{"success":true,"data":{}}');
+      return respond(200, '{"data":[]}');
+    });
+    (global as any).fetch = fetchMock;
+    const postSpy = jest.spyOn(SidebarView, 'postMessage');
+
+    await SidebarView.handleMessage({
+      command: 'uploadToMeterSphere',
+      data: {
+        files: ['/ws/UserController.java'],
+        moduleId: 'proj-1:mod-1',
+        contextPath: '/ctx',
+        branchOverride: 'auto',
+        exportName: 'Demo',
+        syncCase: true,
+      },
+    });
+
+    const importCall = fetchMock.mock.calls.find((c: any[]) => String(c[0]).includes('/definition/import'));
+    expect(importCall).toBeDefined();
+    const bodyText = Buffer.from(importCall![1].body as unknown as Uint8Array).toString('utf8');
+    expect(bodyText).toContain('"/ctx/users"');
+    expect(bodyText).not.toContain('"/users"');
+    expect(postSpy.mock.calls.some((c: any[]) => (c[0] as any)?.command === 'uploadSuccess')).toBe(true);
+  });
 });
