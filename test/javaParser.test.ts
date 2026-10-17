@@ -830,3 +830,27 @@ public class BrokenController {
     });
   });
 });
+
+describe('C1 dual-engine gate: order-independent annotation lookup', () => {
+  const wrap = (annotations: string) => `
+@RestController
+public class UserController {
+  ${annotations}
+  public List<User> getUsers() { return null; }
+}
+`;
+  const cases: Array<[string, string, string]> = [
+    ['@Operation below @GetMapping (IntelliJ layout)', '@GetMapping("/x")\n  @Operation(summary = "A op")', 'A op'],
+    ['@ApiOperation below @GetMapping', '@GetMapping("/x")\n  @ApiOperation(value = "B op")', 'B op'],
+    ['@Description below @GetMapping', '@GetMapping("/x")\n  @Description("C")', 'C'],
+    ['@Operation above @GetMapping (classic layout)', '@Operation(summary = "D op")\n  @GetMapping("/x")', 'D op'],
+    ['parens inside summary', '@Operation(summary = "get user (by id)")\n  @GetMapping("/x")', 'get user (by id)'],
+  ];
+  it.each(['cst', 'regex'] as ParseEngine[])('engine=%s resolves every layout', (engine) => {
+    for (const [name, annotations, expected] of cases) {
+      const result = parseJavaWithEngine(wrap(annotations), 'file:///UserController.java', engine);
+      expect(result.apis).toHaveLength(1);
+      expect(result.apis[0].summary).toBe(expected);
+    }
+  });
+});
