@@ -854,3 +854,81 @@ public class UserController {
     }
   });
 });
+
+
+describe('regex engine: dedupe of composed + plain mappings', () => {
+  const dedupeSrc = [
+    'package com.example.demo;',
+    'import org.springframework.web.bind.annotation.*;',
+    '@RestController',
+    '@RequestMapping("/api")',
+    'public class DedupeController {',
+    '  @PostMapping("/x")',
+    '  @RequestMapping(value = "/x", method = RequestMethod.POST)',
+    '  public void x() { }',
+    '}',
+  ].join('\n');
+
+  it('emits ONE api when shorthand and method-level @RequestMapping produce the same (method, fullPath)', () => {
+    const result = JavaParser.parseSource(dedupeSrc, 'file:///Dedupe.java');
+    expect(result.apis).toHaveLength(1);
+    expect(result.apis[0].method).toBe('POST');
+    expect(result.apis[0].fullPath).toBe('/api/x');
+  });
+
+  it('keeps distinct (method, fullPath) pairs - dedupe never over-collapses', () => {
+    const src = [
+      'package com.example.demo;',
+      'import org.springframework.web.bind.annotation.*;',
+      '@RestController',
+      '@RequestMapping("/api")',
+      'public class TwoController {',
+      '  @GetMapping("/a")',
+      '  public void a() { }',
+      '  @PostMapping("/a")',
+      '  public void b() { }',
+      '}',
+    ].join('\n');
+    const result = JavaParser.parseSource(src, 'file:///Two.java');
+    expect(result.apis).toHaveLength(2);
+    expect(result.apis.map((a) => a.method).sort()).toEqual(['GET', 'POST']);
+  });
+});
+
+describe('regex engine: base/path slash normalization (CST joinPath parity)', () => {
+  const trailingSlashSrc = [
+    'package com.example.demo;',
+    'import org.springframework.web.bind.annotation.*;',
+    '@RestController',
+    '@RequestMapping("/api/")',
+    'public class C {',
+    '  @GetMapping("/x")',
+    '  public void x() { }',
+    '}',
+  ].join('\n');
+  const noLeadingSlashSrc = [
+    'package com.example.demo;',
+    'import org.springframework.web.bind.annotation.*;',
+    '@RestController',
+    '@RequestMapping("api")',
+    'public class D {',
+    '  @GetMapping("/x")',
+    '  public void d() { }',
+    '}',
+  ].join('\n');
+
+  it('collapses a trailing-slash base with a leading-slash method path (no double slash)', () => {
+    const result = JavaParser.parseSource(trailingSlashSrc, 'file:///C.java');
+    expect(result.apis[0].fullPath).toBe('/api/x');
+  });
+
+  it('normalizes a base that lacks a leading slash', () => {
+    const result = JavaParser.parseSource(noLeadingSlashSrc, 'file:///D.java');
+    expect(result.apis[0].fullPath).toBe('/api/x');
+  });
+
+  it.each(['cst', 'regex'] as ParseEngine[])('fullPath is identical on the %s engine for both sources', (engine) => {
+    expect(parseJavaWithEngine(trailingSlashSrc, 'file:///C.java', engine).apis[0].fullPath).toBe('/api/x');
+    expect(parseJavaWithEngine(noLeadingSlashSrc, 'file:///D.java', engine).apis[0].fullPath).toBe('/api/x');
+  });
+});

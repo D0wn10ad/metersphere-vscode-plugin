@@ -74,6 +74,19 @@ function extractPathFromAnnotation(annotationContent: string): string | null {
   return extractAnnotationValue(annotationContent, 'value', 'path');
 }
 
+/**
+ * Join a class-level base path and a method path with the CST engine's
+ * joinPath semantics: trailing slashes on the base and leading slashes on the
+ * sub are collapsed, and the result always starts with '/'. Keeps the regex
+ * fallback engine byte-identical to the CST engine (no `/api//x`).
+ */
+function joinFullPath(base: string, sub: string): string {
+  const b = base.replace(/\/+$/, '');
+  const subPath = sub.replace(/^\/+/, '');
+  const combined = subPath === '' ? b : `${b}/${subPath}`;
+  return combined.startsWith('/') ? combined : `/${combined}`;
+}
+
 function extractOperationValue(annotationContent: string, key: string): string | null {
   if (!annotationContent) return null;
   
@@ -418,7 +431,7 @@ export class JavaParser {
         const api: ParsedApi = {
           method,
           path,
-          fullPath: basePath + path,
+          fullPath: joinFullPath(basePath, path),
           parameters: [],
           position: { line: 0, column: match.index },
           category: findMethodJavadocCategory(code, match.index) ?? classCategory,
@@ -701,7 +714,7 @@ export class JavaParser {
       const api: ParsedApi = {
         method,
         path,
-        fullPath: basePath + path,
+        fullPath: joinFullPath(basePath, path),
         parameters: [],
         position: { line: 0, column: rmMatch.index },
         category: findMethodJavadocCategory(code, rmMatch.index) ?? classCategory,
