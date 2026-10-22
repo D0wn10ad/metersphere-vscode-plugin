@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-10-22
+
+### Fixed
+
+- **Regex fallback engine slash normalization** — the regex engine now joins class-level and method-level paths with the same normalization as the CST engine (`joinFullPath`): a trailing-slash base (`@RequestMapping("/api/")`) or a base without a leading slash (`@RequestMapping("api")`) no longer produces malformed paths like `/api//x` or `api/x`. Covered by new dual-engine parity tests.
+
+### Added
+
+- Test coverage: parser dedupe block (composed + plain mapping collisions), dual-engine slash-normalization parity rows, and the `handleUpload` context-path wiring (end-to-end through `handleMessage` with mocked transport).
+
 ## [0.3.0] - 2026-10-17
 
 ### Added
