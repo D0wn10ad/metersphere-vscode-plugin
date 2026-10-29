@@ -86,3 +86,36 @@ describe('HttpClient TS (AbortController timeout)', () => {
     expect(thrown.message).toBe('Request timed out after 10s')
   })
 })
+
+describe('HttpClient URL validation (SSRF)', () => {
+  const tsClient = require('../src/metersphere/httpClient.ts')
+  const originalFetch = (globalThis as any).fetch
+
+  afterEach(() => {
+    if (originalFetch === undefined) {
+      delete (globalThis as any).fetch
+    } else {
+      ;(globalThis as any).fetch = originalFetch
+    }
+  })
+
+  test('rejects blocked URLs before making requests', async () => {
+    const fetchMock = jest.fn()
+    ;(globalThis as any).fetch = fetchMock
+
+    await expect(tsClient.httpRequest('GET', 'http://127.0.0.1:8080')).rejects.toThrow()
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    await expect(tsClient.httpRequest('GET', 'http://169.254.169.254/')).rejects.toThrow()
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    await expect(tsClient.httpRequest('GET', 'http://192.168.1.1/')).rejects.toThrow()
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    await expect(tsClient.httpRequest('GET', 'http://10.0.0.1/')).rejects.toThrow()
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    await expect(tsClient.httpRequest('file:///etc/passwd')).rejects.toThrow()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+})

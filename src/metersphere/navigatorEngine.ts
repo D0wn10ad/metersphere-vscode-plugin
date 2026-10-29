@@ -2,6 +2,7 @@ import { NavigatorNode, NodeType } from './models/navigatorNode'
 import { HttpResponse } from './httpClient'
 import { SettingsManager } from './settingsManager'
 import { DebugLogger } from './debugLogger'
+import { validateMsUrl } from './urlValidator'
 
 interface MsWorkspace {
   id: string
@@ -402,6 +403,11 @@ export class NavigatorEngine {
   }
 
   static getBaseUrl(): string {
-    return SettingsManager.getMsUrl() ?? 'http://localhost:8080'
+    const baseUrl = SettingsManager.getMsUrl() ?? 'http://localhost:8080'
+    const validation = validateMsUrl(baseUrl)
+    if (!validation.valid) {
+      throw new Error(validation.error || 'URL validation failed')
+    }
+    return baseUrl
   }
 }

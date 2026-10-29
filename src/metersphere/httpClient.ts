@@ -1,4 +1,6 @@
 import { SettingsManager } from './settingsManager'
+import { validateMsUrl } from './urlValidator'
+import { DebugLogger } from './debugLogger'
 
 const REQUEST_TIMEOUT_MS = 10_000
 
@@ -22,6 +24,7 @@ function getFetch(): any {
 
 function getAgent(): any {
   if (!SettingsManager.isRejectUnauthorized()) {
+    DebugLogger.log('HttpClient', 'TLS certificate verification disabled (rejectUnauthorized=false) - this is insecure and vulnerable to MITM attacks')
     try {
       const https = require('https') as typeof import('https')
       return new https.Agent({ rejectUnauthorized: false })
@@ -39,6 +42,10 @@ export async function httpRequest(
   body?: any
 ): Promise<HttpResponse> {
   const start = Date.now()
+  const validation = validateMsUrl(url)
+  if (!validation.valid) {
+    throw new Error(validation.error || 'URL validation failed')
+  }
   const fetchFn = getFetch()
   if (!fetchFn) {
     throw new Error('Fetch API is not available in this environment')

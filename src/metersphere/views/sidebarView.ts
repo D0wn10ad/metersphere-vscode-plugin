@@ -894,14 +894,24 @@ export class SidebarView {
       <input type="checkbox" id="rejectUnauthorizedChk" ${rejectUnauthorized}>
       <label style="margin: 0; font-weight: normal;">Reject Self-Signed Certificates</label>
     </div>
+    <div class="warning" style="padding:8px 10px;font-size:12px;${rejectUnauthorized ? '' : 'display:none;'}" id="tlsWarning">
+      <strong>Warning:</strong> Disabling certificate verification is insecure and vulnerable to man-in-the-middle attacks.
+    </div>
     <button type="button" class="btn-secondary" id="settingsTestBtn">Test Connection</button>
     <button type="submit" class="btn-primary">Save Settings</button>
   </form>
   <script>
     const vscode = acquireVsCodeApi();
     ${escapeHtmlJs}
-    document.getElementById('settingsTestBtn').addEventListener('click', function() { vscode.postMessage({ command: 'testConnection' }); });
-    function save(event) {
+  document.getElementById('settingsTestBtn').addEventListener('click', function() { vscode.postMessage({ command: 'testConnection' }); });
+  var rejectChk = document.getElementById('rejectUnauthorizedChk');
+  if (rejectChk) {
+    rejectChk.addEventListener('change', function() {
+      var w = document.getElementById('tlsWarning');
+      if (w) w.style.display = rejectChk.checked ? '' : 'none';
+    });
+  }
+  function save(event) {
       event.preventDefault();
       var data = {
         msUrl: document.getElementById('msUrl').value,

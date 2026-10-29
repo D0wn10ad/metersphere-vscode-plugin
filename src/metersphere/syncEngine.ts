@@ -1,4 +1,5 @@
 import { HttpResponse } from './httpClient'
+import { validateMsUrl } from './urlValidator'
 
 interface SyncItem {
   id: string
@@ -19,6 +20,10 @@ export class SyncEngine {
   ): Promise<HttpResponse> {
     const { SettingsManager } = require('./settingsManager')
     const baseUrl = SettingsManager.getMsUrl() ?? 'http://localhost:8080'
+    const validation = validateMsUrl(baseUrl)
+    if (!validation.valid) {
+      throw new Error(validation.error || 'URL validation failed')
+    }
     return fetchFn('GET', `${baseUrl}/api/definition/${resourceId}`, {})
   }
 
@@ -29,6 +34,10 @@ export class SyncEngine {
   ): Promise<HttpResponse> {
     const { SettingsManager } = require('./settingsManager')
     const baseUrl = SettingsManager.getMsUrl() ?? 'http://localhost:8080'
+    const validation = validateMsUrl(baseUrl)
+    if (!validation.valid) {
+      throw new Error(validation.error || 'URL validation failed')
+    }
     return fetchFn('PUT', `${baseUrl}/api/definition/${resourceId}`, {}, body)
   }
 }
