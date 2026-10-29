@@ -5,6 +5,13 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-10-28
+
+### Security
+
+- **SSRF hardening** — a new `validateMsUrl` utility blocks requests to private, link-local, loopback, and cloud-metadata IP ranges (10/8, 127/8, 169.254/16, 172.16-31/12, 192.168/16, and IPv6 `::1` / `fc00::/7` / `fe80::/10`) and non-http(s) schemes. URL validation is enforced in the HTTP client, sync engine, and navigator engine; a configurable allowlist can override blocked ranges. `localhost` remains allowed as the documented default server config.
+- **TLS warning** — when certificate verification is disabled (`rejectUnauthorized=false`), a strong warning is logged to the Output panel and shown in the Settings UI near the checkbox.
+
 ## [0.3.1] - 2026-10-22
 
 ### Fixed
